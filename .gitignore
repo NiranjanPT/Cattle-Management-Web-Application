@@ -1,0 +1,5 @@
+cattle.db
+.secret_key
+__pycache__/
+static/uploads/
+.env

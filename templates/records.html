@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block title %}{{ cfg.title }}{% endblock %}
+{% block content %}
+<div class="row spread"><h1>{{ cfg.title }}</h1><a class="btn" href="{{ url_for('record_form', kind=kind, cattle_id=cid) }}">+ Add {{ cfg.one }}</a></div>
+<div class="tabs">
+  {% for k, l in [('health', 'Health'), ('vaccinations', 'Vaccinations'), ('feeding', 'Feeding'), ('breeding', 'Breeding'), ('milk', 'Milk')] %}
+  <a href="{{ url_for('records', kind=k) }}" class="{{ 'on' if kind == k }}">{{ l }}</a>{% endfor %}
+</div>
+<form class="row card" method="get">
+  <select name="cattle_id"><option value="">All animals</option>
+    {% for a in animals %}<option value="{{ a.id }}" {{ 'selected' if cid == a.id }}>{{ a.tag_no }} {{ a.name or '' }}</option>{% endfor %}</select>
+  <label>From <input type="date" name="from" value="{{ d_from }}"></label>
+  <label>To <input type="date" name="to" value="{{ d_to }}"></label>
+  <button>Filter</button>
+</form>
+<div class="card table-wrap"><table>
+<tr><th>Animal</th>{% for f in cfg.fields if f[0] != 'notes' %}<th class="{{ 'n' if f[2] == 'number' }}">{{ f[1]|replace(' (blank = auto)', '') }}</th>{% endfor %}<th></th></tr>
+{% for r in rows %}
+<tr><td><a href="{{ url_for('cattle_profile', cid=r.cattle_id) }}">{{ r.tag_no }}</a> <span class="muted small">{{ r.cname or '' }}</span></td>
+{% for f in cfg.fields if f[0] != 'notes' %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">
+  {%- set val = r[f[0]] -%}
+  {%- if f[0] == 'next_due' and val -%}<span class="badge {{ 'bad' if val < today.isoformat() else '' }}">{{ val }}</span>
+  {%- elif f[0] == 'pregnancy' -%}<span class="badge {{ 'ok' if val == 'Confirmed' else 'bad' if val == 'Not pregnant' else 'warn' }}">{{ val }}</span>
+  {%- elif val is none -%}{%- elif f[2] == 'number' -%}{{ val|num }}{%- else -%}{{ val }}{%- endif -%}</td>{% endfor %}
+<td class="no-print"><a href="{{ url_for('record_form', kind=kind, rid=r.id) }}">Edit</a>
+  <form method="post" action="{{ url_for('record_delete', kind=kind, rid=r.id) }}" class="inline" onsubmit="return confirm('Delete this record?')">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger sm">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="12" class="muted">No records.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

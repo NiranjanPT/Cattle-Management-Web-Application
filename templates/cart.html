@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Cart{% endblock %}
+{% block content %}
+<h1>Your cart</h1>
+{% if lines %}
+<form method="post">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<div class="card table-wrap"><table>
+<tr><th>Product</th><th class="n">Price</th><th class="n">Quantity</th><th class="n">Subtotal</th></tr>
+{% for l in lines %}<tr><td>{{ l.p.name }}</td><td class="n">{{ l.p.price|money }} / {{ l.p.unit }}</td>
+<td class="n"><input type="number" name="qty_{{ l.p.id }}" value="{{ l.qty }}" min="0" style="width:80px"></td>
+<td class="n">{{ l.sub|money }}</td></tr>{% endfor %}
+<tr><th colspan="3" class="n">Total</th><th class="n">{{ total|money }}</th></tr>
+</table>
+<p><button class="ghost" name="action" value="update">Update quantities</button> <span class="small muted">Set a quantity to 0 to remove it.</span></p></div>
+<div class="card"><h2>Delivery details</h2>
+<div class="stack" style="display:grid">
+  <label>Phone <input name="phone" value="{{ user.phone or '' }}" required></label>
+  <label class="full">Delivery address <textarea name="address" required>{{ user.address or '' }}</textarea></label>
+  <label class="full">Notes (delivery time, etc.) <textarea name="notes"></textarea></label>
+  <div class="full"><button name="action" value="checkout">Place order · {{ total|money }}</button> <span class="small muted">Pay on delivery.</span></div>
+</div></div>
+</form>
+{% else %}<div class="card"><p>Your cart is empty.</p><a class="btn" href="{{ url_for('shop') }}">Browse products</a></div>{% endif %}
+{% endblock %}

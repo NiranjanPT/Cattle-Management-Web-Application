@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}{{ 'Edit ' + c.tag_no if c else 'Add animal' }}{% endblock %}
+{% macro v(k) %}{{ c[k] if c and c[k] is not none else '' }}{% endmacro %}
+{% block content %}
+<h1>{{ 'Edit ' + c.tag_no if c else 'Add animal' }}</h1>
+<div class="card"><form method="post" enctype="multipart/form-data" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Tag number * <input name="tag_no" value="{{ v('tag_no') }}" required></label>
+  <label>Name <input name="name" value="{{ v('name') }}"></label>
+  <label>Type <select name="species">{% for s in species %}<option {{ 'selected' if c and c.species == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Breed <input name="breed" list="breeds" value="{{ v('breed') }}"><datalist id="breeds">{% for b in breeds %}<option>{{ b }}</option>{% endfor %}</datalist></label>
+  <label>Sex <select name="sex">{% for s in ['Female', 'Male'] %}<option {{ 'selected' if c and c.sex == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Date of birth <input type="date" name="dob" value="{{ v('dob') }}"></label>
+  <label>Colour / markings <input name="color" value="{{ v('color') }}"></label>
+  <label>Weight (kg) <input type="number" step="0.1" name="weight_kg" value="{{ v('weight_kg') }}"></label>
+  <label>Source <select name="source">{% for s in ['Born on farm', 'Purchased', 'Donated'] %}<option {{ 'selected' if c and c.source == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Purchase date <input type="date" name="purchase_date" value="{{ v('purchase_date') }}"></label>
+  <label>Purchase price (₹) <input type="number" step="0.01" name="purchase_price" value="{{ v('purchase_price') }}"></label>
+  <label>Mother (dam) <select name="dam_id"><option value="">Unknown / not on farm</option>
+    {% for d in dams %}<option value="{{ d.id }}" {{ 'selected' if c and c.dam_id == d.id }}>{{ d.tag_no }} {{ d.name or '' }}</option>{% endfor %}</select></label>
+  <label>Father (sire / semen) <input name="sire" value="{{ v('sire') }}"></label>
+  <label>Status <select name="status">{% for s in ['Active', 'Sold', 'Dead'] %}<option {{ 'selected' if c and c.status == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Photo <input type="file" name="photo" accept="image/*"></label>
+  <label class="full">Notes <textarea name="notes">{{ v('notes') }}</textarea></label>
+  <div class="full"><button>Save</button> <a href="{{ url_for('cattle_profile', cid=c.id) if c else url_for('cattle_list') }}">Cancel</a></div>
+</form></div>
+{% endblock %}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Gaushala{% endblock %} · Gaushala</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if user %}
+<header class="top"><div class="top-inner">
+  <a class="brand" href="{{ url_for('index') }}">🐄 Gau<span>shala</span></a>
+  <nav class="main">
+    {% set ep = request.endpoint %}
+    {% if user.role in ('admin', 'staff') %}
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('cattle_list') }}" class="{{ 'on' if ep and ep.startswith('cattle') }}">Cattle</a>
+      <details class="menu"><summary>Records ▾</summary><div class="menu-items">
+        <a href="{{ url_for('records', kind='health') }}">Health</a>
+        <a href="{{ url_for('records', kind='vaccinations') }}">Vaccinations</a>
+        <a href="{{ url_for('records', kind='feeding') }}">Feeding</a>
+        <a href="{{ url_for('records', kind='breeding') }}">Breeding</a>
+        <a href="{{ url_for('records', kind='milk') }}">Milk production</a>
+      </div></details>
+      <details class="menu"><summary>Shop ▾</summary><div class="menu-items">
+        <a href="{{ url_for('shop') }}">Storefront</a>
+        <a href="{{ url_for('products') }}">Products and stock</a>
+        <a href="{{ url_for('manage_orders') }}">Customer orders</a>
+      </div></details>
+      <a href="{{ url_for('calendar') }}" class="{{ 'on' if ep and ep.startswith('calendar') or ep == 'nakshatras' }}">Calendar</a>
+      <a href="{{ url_for('reports') }}" class="{{ 'on' if ep == 'reports' }}">Reports</a>
+      {% if user.role == 'admin' %}<a href="{{ url_for('users') }}" class="{{ 'on' if ep in ('users', 'user_form') }}">Users</a>{% endif %}
+    {% else %}
+      <a href="{{ url_for('shop') }}" class="{{ 'on' if ep == 'shop' }}">Shop</a>
+      <a href="{{ url_for('my_orders') }}" class="{{ 'on' if ep == 'my_orders' }}">My orders</a>
+      <a href="{{ url_for('calendar') }}" class="{{ 'on' if ep == 'calendar' }}">Calendar</a>
+    {% endif %}
+  </nav>
+  <div class="who">
+    <a href="{{ url_for('cart') }}">🛒 {{ cart_count }}</a>
+    <a href="{{ url_for('profile') }}">{{ user.full_name }}</a>
+    <a href="{{ url_for('logout') }}">Log out</a>
+  </div>
+</div></header>
+{% endif %}
+<main>
+{% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

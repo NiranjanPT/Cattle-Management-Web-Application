@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Orders{% endblock %}
+{% block content %}
+<h1>{{ 'Customer orders' if manage else 'My orders' }}</h1>
+{% if manage %}<div class="tabs"><a href="{{ url_for('manage_orders') }}" class="{{ 'on' if not status }}">All</a>
+{% for s in statuses %}<a href="{{ url_for('manage_orders', status=s) }}" class="{{ 'on' if status == s }}">{{ s }}</a>{% endfor %}</div>{% endif %}
+<div class="card table-wrap"><table>
+<tr><th>Order</th><th>Date</th>{% if manage %}<th>Customer</th>{% endif %}<th class="n">Total</th><th>Status</th>{% if manage %}<th>Change status</th>{% endif %}</tr>
+{% for o in rows %}<tr><td><a href="{{ url_for('order_detail', oid=o.id) }}">#{{ o.id }}</a></td><td>{{ o.created_at }}</td>
+{% if manage %}<td>{{ o.full_name }}</td>{% endif %}<td class="n">{{ o.total|money }}</td>
+<td><span class="badge {{ 'ok' if o.status == 'Delivered' else 'bad' if o.status == 'Cancelled' else 'warn' if o.status == 'Pending' else '' }}">{{ o.status }}</span></td>
+{% if manage %}<td><form method="post" action="{{ url_for('order_status', oid=o.id) }}" class="row">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<select name="status">{% for s in statuses %}<option {{ 'selected' if o.status == s }}>{{ s }}</option>{% endfor %}</select><button class="sm">Save</button></form></td>{% endif %}
+</tr>{% else %}<tr><td colspan="6" class="muted">No orders yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

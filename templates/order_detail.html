@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Order #{{ o.id }}{% endblock %}
+{% block content %}
+<h1>Order #{{ o.id }} <span class="badge">{{ o.status }}</span></h1>
+<div class="card">
+<dl class="facts"><dt>Placed</dt><dd>{{ o.created_at }}</dd><dt>Customer</dt><dd>{{ o.full_name }}</dd>
+<dt>Phone</dt><dd>{{ o.phone or '' }}</dd><dt>Address</dt><dd>{{ o.address or '' }}</dd>{% if o.notes %}<dt>Notes</dt><dd>{{ o.notes }}</dd>{% endif %}</dl>
+</div>
+<div class="card table-wrap"><table>
+<tr><th>Product</th><th class="n">Price</th><th class="n">Qty</th><th class="n">Subtotal</th></tr>
+{% for i in items %}<tr><td>{{ i.name }}</td><td class="n">{{ i.price|money }}</td><td class="n">{{ i.qty|num }}</td><td class="n">{{ (i.price * i.qty)|money }}</td></tr>{% endfor %}
+<tr><th colspan="3" class="n">Total (pay on delivery)</th><th class="n">{{ o.total|money }}</th></tr>
+</table></div>
+{% if user.role != 'customer' %}<form method="post" action="{{ url_for('order_status', oid=o.id) }}" class="row card">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">Status
+<select name="status">{% for s in statuses %}<option {{ 'selected' if o.status == s }}>{{ s }}</option>{% endfor %}</select><button>Save</button></form>{% endif %}
+<a href="{{ url_for('my_orders') if user.role == 'customer' else url_for('manage_orders') }}">← Back to orders</a>
+{% endblock %}

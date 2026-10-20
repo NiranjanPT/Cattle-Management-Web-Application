@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}{{ 'Edit user' if u else 'Add user' }}{% endblock %}
+{% block content %}
+<h1>{{ 'Edit ' + u.full_name if u else 'Add user' }}</h1>
+<div class="card"><form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Full name <input name="full_name" value="{{ u.full_name if u else '' }}" required></label>
+  <label>Username <input name="username" value="{{ u.username if u else '' }}" required></label>
+  <label>{{ 'New password (leave blank to keep)' if u else 'Password' }} <input name="password" type="password" {{ '' if u else 'required minlength=6' }}></label>
+  <label>Role <select name="role">
+    {% for r in ['staff', 'admin', 'customer'] %}<option value="{{ r }}" {{ 'selected' if u and u.role == r }}>{{ r|title }}</option>{% endfor %}
+  </select></label>
+  <label>Phone <input name="phone" value="{{ u.phone or '' if u else '' }}"></label>
+  <label>Email <input name="email" type="email" value="{{ u.email or '' if u else '' }}"></label>
+  <label class="full">Address <textarea name="address">{{ u.address or '' if u else '' }}</textarea></label>
+  <label class="check full"><input type="checkbox" name="active" {{ 'checked' if not u or u.active }}> Account active (can log in)</label>
+  <div class="full"><button>Save</button> <a href="{{ url_for('users') }}">Cancel</a></div>
+</form></div>
+{% endblock %}

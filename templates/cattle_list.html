@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Cattle{% endblock %}
+{% block content %}
+<div class="row spread"><h1>Cattle register</h1><a class="btn" href="{{ url_for('cattle_form') }}">+ Add animal</a></div>
+<form class="row card" method="get">
+  <input name="q" value="{{ s }}" placeholder="Search tag, name or breed">
+  <select name="status">
+    {% for st in ['Active', 'Sold', 'Dead', ''] %}<option value="{{ st }}" {{ 'selected' if status == st }}>{{ st or 'All' }}</option>{% endfor %}
+  </select>
+  <button>Filter</button>
+  <span class="muted small">{{ rows|length }} animals</span>
+</form>
+<div class="card table-wrap"><table>
+<tr><th>Tag</th><th>Name</th><th>Type</th><th>Breed</th><th>Sex</th><th>Age</th><th class="n">Weight (kg)</th><th>Status</th></tr>
+{% for c in rows %}
+<tr><td><a href="{{ url_for('cattle_profile', cid=c.id) }}"><b>{{ c.tag_no }}</b></a></td><td>{{ c.name or '' }}</td>
+<td>{{ c.species }}</td><td>{{ c.breed or '' }}</td><td>{{ c.sex }}</td><td>{{ age_text(c.dob) }}</td>
+<td class="n">{{ c.weight_kg|num }}</td>
+<td><span class="badge {{ 'ok' if c.status == 'Active' else 'bad' if c.status == 'Dead' else '' }}">{{ c.status }}</span></td></tr>
+{% else %}<tr><td colspan="8" class="muted">No animals found.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

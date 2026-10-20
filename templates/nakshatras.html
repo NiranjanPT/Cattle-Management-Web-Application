@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Nakshatras{% endblock %}
+{% block content %}
+<div class="row spread"><h1>The 27 Nakshatras</h1><a class="btn ghost" href="{{ url_for('calendar') }}">← Calendar</a></div>
+<div class="card">Today ({{ today.date.strftime('%d %b %Y') }}, 6:00 AM IST): <b>{{ today.paksha }} {{ today.tithi }}</b>, Moon in <b>{{ today.nakshatra }}</b> ({{ today.nakshatra_dev }}) pada {{ today.pada }}, rashi {{ today.moon_rashi }}.</div>
+<div class="card table-wrap"><table>
+<tr><th>#</th><th>Nakshatra</th><th></th><th>Span (sidereal)</th><th>Rashi</th><th>Ruling planet</th><th>Deity</th><th>Symbol</th></tr>
+{% for r in rows %}<tr {% if r.no - 1 == today.nakshatra_index %}style="background:var(--accent-soft)"{% endif %}><td>{{ r.no }}</td><td><b>{{ r.name }}</b></td><td>{{ r.dev }}</td>
+<td>{{ r.from }} – {{ r.to }}</td><td>{{ r.rashi }}</td><td>{{ r.lord }}</td><td>{{ r.deity }}</td><td>{{ r.symbol }}</td></tr>{% endfor %}
+</table></div>
+<p class="small muted">Each nakshatra spans 13°20′ of the zodiac and has four padas of 3°20′. Some nakshatras cross from one rashi into the next; the rashi shown is where it begins.</p>
+{% endblock %}

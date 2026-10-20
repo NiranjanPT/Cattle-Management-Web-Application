@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Users{% endblock %}
+{% block content %}
+<div class="row spread"><h1>Users</h1><a class="btn" href="{{ url_for('user_form') }}">+ Add user</a></div>
+<div class="tabs">
+  {% for r, l in [('', 'All'), ('admin', 'Admins'), ('staff', 'Farm staff'), ('customer', 'Customers')] %}
+  <a href="{{ url_for('users', role=r) }}" class="{{ 'on' if role == r }}">{{ l }}</a>{% endfor %}
+</div>
+<div class="card table-wrap"><table>
+<tr><th>Name</th><th>Username</th><th>Role</th><th>Phone</th><th>Email</th><th>Status</th><th>Joined</th><th></th></tr>
+{% for u in users %}
+<tr><td>{{ u.full_name }}</td><td>{{ u.username }}</td><td>{{ u.role|title }}</td><td>{{ u.phone or '' }}</td>
+<td>{{ u.email or '' }}</td><td>{% if u.active %}<span class="badge ok">Active</span>{% else %}<span class="badge bad">Disabled</span>{% endif %}</td>
+<td>{{ u.created_at[:10] }}</td><td><a href="{{ url_for('user_form', uid=u.id) }}">Edit</a></td></tr>
+{% endfor %}
+</table></div>
+<p class="small muted">Admins manage everything including users. Farm staff manage cattle, records, products and orders. Customers can only shop and see the calendar.</p>
+{% endblock %}

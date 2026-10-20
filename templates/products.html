@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Products{% endblock %}
+{% block content %}
+<div class="row spread"><h1>Products and stock</h1><a class="btn" href="{{ url_for('product_form') }}">+ Add product</a></div>
+<div class="card table-wrap"><table>
+<tr><th>Product</th><th>Category</th><th class="n">Price</th><th>Unit</th><th class="n">Stock</th><th>Listed</th><th></th></tr>
+{% for p in rows %}<tr><td>{{ p.name }}</td><td>{{ p.category }}</td><td class="n">{{ p.price|money }}</td><td>{{ p.unit }}</td>
+<td class="n">{% if p.stock <= 5 %}<span class="badge {{ 'bad' if p.stock <= 0 else 'warn' }}">{{ p.stock|num }}</span>{% else %}{{ p.stock|num }}{% endif %}</td>
+<td>{{ 'Yes' if p.active else 'Hidden' }}</td><td><a href="{{ url_for('product_form', pid=p.id) }}">Edit</a></td></tr>
+{% else %}<tr><td colspan="7" class="muted">No products yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
