@@ -25,7 +25,7 @@
   <div class="card">
     <h2>Vaccinations due</h2>
     {% if vacc_due %}<table>{% for v in vacc_due %}<tr><td><a href="{{ url_for('cattle_profile', cid=v.cattle_id) }}">{{ v.tag_no }}</a> {{ v.cname or '' }}</td><td>{{ v.vaccine }}</td>
-      <td><span class="badge {{ 'bad' if v.next_due < today.isoformat() else 'warn' }}">{{ 'Overdue ' if v.next_due < today.isoformat() }}{{ v.next_due }}</span></td></tr>{% endfor %}</table>
+      <td><span class="badge {{ 'bad' if v.next_due < today else 'warn' }}">{{ 'Overdue ' if v.next_due < today }}{{ v.next_due }}</span></td></tr>{% endfor %}</table>
     {% else %}<p class="muted">Nothing due in the next 14 days.</p>{% endif %}
   </div>
   <div class="card">

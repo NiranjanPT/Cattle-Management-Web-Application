@@ -1,7 +1,14 @@
--- Cattle management database (SQLite)
+-- Cattle management database (PostgreSQL)
+--
+-- Reference copy only. The database is built by Alembic: `alembic upgrade head`
+-- runs migrations/versions/0001_initial_schema.py, which holds these same statements
+-- (tests/test_scripts.py checks the two stay identical). Later schema changes go in
+-- new Alembic migrations; update this file to match.
+--
+-- Migration 0001 also sets the database's default time zone to Asia/Kolkata.
 
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE users (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     full_name TEXT NOT NULL,
@@ -10,117 +17,126 @@ CREATE TABLE IF NOT EXISTS users (
     address TEXT,
     role TEXT NOT NULL CHECK (role IN ('admin', 'staff', 'customer')),
     active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS cattle (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE cattle (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tag_no TEXT NOT NULL UNIQUE,
     name TEXT,
     species TEXT NOT NULL DEFAULT 'Cow',
     breed TEXT,
     sex TEXT NOT NULL CHECK (sex IN ('Female', 'Male')),
-    dob TEXT,
+    dob DATE,
     color TEXT,
-    weight_kg REAL,
+    weight_kg NUMERIC(10,2),
     source TEXT DEFAULT 'Born on farm',
-    purchase_date TEXT,
-    purchase_price REAL,
+    purchase_date DATE,
+    purchase_price NUMERIC(12,2),
     dam_id INTEGER REFERENCES cattle(id) ON DELETE SET NULL,
     sire TEXT,
     status TEXT NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Sold', 'Dead')),
     photo TEXT,
     notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS health_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE health_records (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
-    date TEXT NOT NULL,
+    date DATE NOT NULL,
     kind TEXT NOT NULL,
     diagnosis TEXT,
     treatment TEXT,
     vet_name TEXT,
-    cost REAL DEFAULT 0,
+    cost NUMERIC(12,2) DEFAULT 0,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS vaccinations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE vaccinations (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
-    date_given TEXT NOT NULL,
+    date_given DATE NOT NULL,
     vaccine TEXT NOT NULL,
     dose TEXT,
-    next_due TEXT,
+    next_due DATE,
     given_by TEXT,
-    cost REAL DEFAULT 0,
+    cost NUMERIC(12,2) DEFAULT 0,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS feedings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE feedings (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
-    date TEXT NOT NULL,
+    date DATE NOT NULL,
     feed_type TEXT NOT NULL,
-    quantity_kg REAL NOT NULL,
-    cost REAL DEFAULT 0,
+    quantity_kg NUMERIC(10,2) NOT NULL,
+    cost NUMERIC(12,2) DEFAULT 0,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS breedings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE breedings (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
-    date TEXT NOT NULL,
+    date DATE NOT NULL,
     method TEXT NOT NULL,
     bull_or_semen TEXT,
     technician TEXT,
     pregnancy TEXT NOT NULL DEFAULT 'Pending',
-    expected_calving TEXT,
-    actual_calving TEXT,
+    expected_calving DATE,
+    actual_calving DATE,
     calf_tag TEXT,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS milk_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE milk_records (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
-    date TEXT NOT NULL,
+    date DATE NOT NULL,
     session TEXT NOT NULL,
-    litres REAL NOT NULL,
+    litres NUMERIC(10,2) NOT NULL,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE products (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name TEXT NOT NULL,
     category TEXT NOT NULL,
     description TEXT,
-    price REAL NOT NULL,
+    price NUMERIC(12,2) NOT NULL,
     unit TEXT NOT NULL,
-    stock REAL NOT NULL DEFAULT 0,
+    stock NUMERIC(10,2) NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1
 );
 
-CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE orders (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     status TEXT NOT NULL DEFAULT 'Pending',
-    total REAL NOT NULL,
+    total NUMERIC(12,2) NOT NULL,
     phone TEXT,
     address TEXT,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS order_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE order_items (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
-    price REAL NOT NULL,
-    qty REAL NOT NULL
+    price NUMERIC(12,2) NOT NULL,
+    qty NUMERIC(10,2) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_milk_date ON milk_records(date);
-CREATE INDEX IF NOT EXISTS idx_vacc_due ON vaccinations(next_due);
+CREATE INDEX idx_health_cattle_date ON health_records (cattle_id, date);
+CREATE INDEX idx_vacc_cattle_date ON vaccinations (cattle_id, date_given);
+CREATE INDEX idx_feed_cattle_date ON feedings (cattle_id, date);
+CREATE INDEX idx_breed_cattle_date ON breedings (cattle_id, date);
+CREATE INDEX idx_milk_cattle_date ON milk_records (cattle_id, date);
+CREATE INDEX idx_milk_date ON milk_records (date);
+CREATE INDEX idx_vacc_due ON vaccinations (next_due);
+CREATE INDEX idx_orders_status ON orders (status);
+CREATE INDEX idx_orders_user ON orders (user_id);
+CREATE INDEX idx_order_items_order ON order_items (order_id);
+CREATE INDEX idx_cattle_dam ON cattle (dam_id);

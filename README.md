@@ -5,14 +5,47 @@ breeding, a dairy shop for customers, a Hindu calendar with nakshatras, and repo
 
 ## Run it on your computer
 
-You need Python 3.10 or newer.
+You need Python 3.10 or newer and a free [Neon](https://neon.tech) account (hosted PostgreSQL).
 
+### 1. Create the database on Neon
+1. Sign up at neon.tech and create a project (pick the region nearest you; for India, Singapore).
+2. On the project dashboard click **Connect** and copy the connection string. It looks like
+   `postgresql://USER:PASSWORD@ep-...-pooler.REGION.aws.neon.tech/neondb?sslmode=require`.
+3. For running the tests, create a second **branch** (Branches > New branch) and copy its
+   connection string too. The tests wipe that branch, so never give them your main one.
+
+### 2. Install and configure
 ```bash
 cd cattle-app
 python -m venv .venv
 # Windows: .venv\Scripts\activate     Mac/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python seed_demo.py      # optional: adds sample cattle, records and products
+```
+Copy `.env.example` to `.env` and fill in `DATABASE_URL`, `DATABASE_URL_TEST` (optional,
+for tests) and `SECRET_KEY` (make one with
+`python -c "import secrets; print(secrets.token_hex(32))"`). `.env` holds your database
+password: it is listed in `.gitignore`, so never commit or share it.
+
+### 3. Create the tables
+```bash
+alembic upgrade head
+```
+This also sets the database's time zone to Asia/Kolkata (order times and monthly totals
+are counted in farm time).
+
+### 4. Add data: move your old data **or** add demo data
+Do this **before** starting the app for the first time; the app creates an `admin`
+account on its first start, and the data move only fills empty tables.
+```bash
+python migrate_sqlite_to_postgres.py        # copies everything from cattle.db, keeping ids
+# or, for a fresh start with sample data:
+python seed_demo.py
+```
+The data move runs in one transaction, never changes `cattle.db`, and prints row counts
+for both databases at the end. Keep `cattle.db` as a backup.
+
+### 5. Run
+```bash
 python app.py
 ```
 
@@ -27,14 +60,33 @@ Open http://127.0.0.1:5000 and log in.
 Change the admin password on the **My profile** page straight away. Customers can
 create their own accounts from the login page.
 
-The database is a single file, `cattle.db`, created next to `app.py`. Back it up by
-copying that file. Set `CATTLE_DB=/path/to/file.db` to keep it somewhere else.
+The data lives in your Neon database. Neon keeps a restore history (point-in-time
+restore) and you can make a backup copy any time by creating a branch, or with
+`pg_dump "$DATABASE_URL" > backup.sql`. Animal photos are still saved on this computer,
+in `static/uploads/`; back that folder up too.
+
+### Changing the database later
+Schema changes go in a new Alembic migration: `alembic revision -m "what changed"`, write
+the SQL in its `upgrade()` and `downgrade()`, then `alembic upgrade head`. Update
+`schema.sql` (a readable copy of the full schema) to match.
+
+### Tests
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+The tests use only `DATABASE_URL_TEST` and refuse to start without it or if it points at
+the main database. They log in as admin, staff and customer, open every page, add an
+animal, a breeding record and a milk record for several animals, place and cancel a
+shop order, and check the data move and the demo seed. Over the internet to Neon they
+take a few minutes.
 
 ## Plan
 
 ### Stack
 - **Python + Flask** for the server: small, widely taught, easy to read.
-- **SQLite** for the database: one file, nothing to install.
+- **PostgreSQL on Neon** for the database: hosted, backed up, nothing to install. The app
+  talks to it with psycopg 3 through a small connection pool; Alembic manages the schema.
 - **Server-rendered HTML pages** (Jinja templates) with one CSS file: no JavaScript
   build step. Works on phones and prints cleanly; follows the system's dark mode.
 
@@ -73,8 +125,12 @@ from a printed panchang for your town.
 ## Files
 - `app.py`: all pages and logic
 - `panchang.py`: Hindu calendar calculations
-- `schema.sql`: database tables
+- `migrations/`, `alembic.ini`: database schema, managed by Alembic
+- `schema.sql`: readable copy of the full schema
+- `migrate_sqlite_to_postgres.py`: one-time move of the old `cattle.db` data
 - `seed_demo.py`: sample data
+- `tests/`: automated tests
+- `.env.example`: settings to copy into `.env`
 - `templates/`: HTML pages, `static/style.css`: styling
 
 ## Ideas for a next version

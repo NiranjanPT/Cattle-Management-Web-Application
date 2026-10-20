@@ -5,19 +5,23 @@
 <form method="post">
 <input type="hidden" name="csrf" value="{{ csrf_token }}">
 <div class="card table-wrap"><table>
-<tr><th>Product</th><th class="n">Price</th><th class="n">Quantity</th><th class="n">Subtotal</th></tr>
+<tr><th>Product</th><th class="n">Price</th><th class="n">Quantity</th><th class="n">Subtotal</th><th></th></tr>
 {% for l in lines %}<tr><td>{{ l.p.name }}</td><td class="n">{{ l.p.price|money }} / {{ l.p.unit }}</td>
-<td class="n"><input type="number" name="qty_{{ l.p.id }}" value="{{ l.qty }}" min="0" style="width:80px"></td>
-<td class="n">{{ l.sub|money }}</td></tr>{% endfor %}
-<tr><th colspan="3" class="n">Total</th><th class="n">{{ total|money }}</th></tr>
+<td class="n"><input type="number" name="qty_{{ l.p.id }}" value="{{ l.qty }}" min="0" style="width:80px" aria-label="Quantity of {{ l.p.name }}"></td>
+<td class="n">{{ l.sub|money }}</td>
+{#- formnovalidate: removing or updating must not wait for the delivery details below -#}
+<td class="n"><button class="danger sm" formaction="{{ url_for('cart_remove', pid=l.p.id) }}" formnovalidate
+  aria-label="Remove {{ l.p.name }} from cart">Remove</button></td></tr>{% endfor %}
+<tr><th colspan="3" class="n">Total</th><th class="n">{{ total|money }}</th><th></th></tr>
 </table>
-<p><button class="ghost" name="action" value="update">Update quantities</button> <span class="small muted">Set a quantity to 0 to remove it.</span></p></div>
+<p><button class="ghost" name="action" value="update" formnovalidate>Update quantities</button> <span class="small muted">Set a quantity to 0 to remove it.</span></p></div>
 <div class="card"><h2>Delivery details</h2>
 <div class="stack" style="display:grid">
-  <label>Phone <input name="phone" value="{{ user.phone or '' }}" required></label>
-  <label class="full">Delivery address <textarea name="address" required>{{ user.address or '' }}</textarea></label>
-  <label class="full">Notes (delivery time, etc.) <textarea name="notes"></textarea></label>
-  <div class="full"><button name="action" value="checkout">Place order · {{ total|money }}</button> <span class="small muted">Pay on delivery.</span></div>
+  <label>Phone * <input type="tel" name="phone" inputmode="tel" minlength="10" maxlength="20" autocomplete="tel"
+    value="{{ (form.phone if form else user.phone) or '' }}" placeholder="98220 00000" required></label>
+  <label class="full">Delivery address * <textarea name="address" autocomplete="street-address" required>{{ (form.address if form else user.address) or '' }}</textarea></label>
+  <label class="full">Notes (delivery time, etc.) <textarea name="notes">{{ form.notes if form else '' }}</textarea></label>
+  <div class="full"><button name="action" value="checkout">Place order · {{ total|money }}</button> <span class="small muted">Pay on delivery. Phone and address are required.</span></div>
 </div></div>
 </form>
 {% else %}<div class="card"><p>Your cart is empty.</p><a class="btn" href="{{ url_for('shop') }}">Browse products</a></div>{% endif %}

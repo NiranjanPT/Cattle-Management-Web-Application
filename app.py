@@ -1,14 +1,21 @@
-"""Gaushala: a cattle management web application (Flask + SQLite)."""
+"""Gaushala: a cattle management web application (Flask + PostgreSQL)."""
+import atexit
 import csv
 import io
 import os
+import re
 import secrets
-import sqlite3
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from functools import wraps
+from zoneinfo import ZoneInfo
 
+import psycopg
+from dotenv import load_dotenv
 from flask import (Flask, Response, abort, flash, g, redirect, render_template,
                    request, session, url_for)
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -16,32 +23,41 @@ import panchang
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+TIMEZONE = "Asia/Kolkata"  # order times and "this month" are counted in farm time
+
+load_dotenv(os.path.join(BASE_DIR, ".env"))  # real environment variables win over .env
+
+
+def _env(name):
+    if not os.environ.get(name):
+        raise SystemExit(f"{name} is not set. Copy .env.example to .env and fill it in.")
+    return os.environ[name]
+
 
 app = Flask(__name__)
-app.config["DATABASE"] = os.environ.get("CATTLE_DB", os.path.join(BASE_DIR, "cattle.db"))
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # photo uploads
-
-
-def _secret_key():
-    if os.environ.get("SECRET_KEY"):
-        return os.environ["SECRET_KEY"]
-    path = os.path.join(os.path.dirname(app.config["DATABASE"]), ".secret_key")
-    if not os.path.exists(path):
-        with open(path, "w") as f:
-            f.write(secrets.token_hex(32))
-    with open(path) as f:
-        return f.read().strip()
-
-
-app.secret_key = _secret_key()
+app.secret_key = _env("SECRET_KEY")
 
 # ---------------------------------------------------------------- database
 
+
+def _configure(conn):
+    # set_config, not SET: SET cannot take a bound parameter
+    conn.execute("SELECT set_config('TimeZone', %s, false)", (TIMEZONE,))
+
+
+# Autocommit: each q()/ex() stands alone; group statements with `with get_db().transaction():`.
+# prepare_threshold=None because Neon's pooled endpoint (PgBouncer) can't keep prepared statements.
+# check_connection replaces connections that died while Neon's compute was asleep.
+pool = ConnectionPool(_env("DATABASE_URL"), min_size=1, max_size=int(os.environ.get("DB_POOL_SIZE", 5)),
+                      kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None},
+                      configure=_configure, check=ConnectionPool.check_connection, open=True)
+atexit.register(pool.close)
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(app.config["DATABASE"])
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        g.db = pool.getconn()
     return g.db
 
 
@@ -49,30 +65,40 @@ def get_db():
 def close_db(exc):
     db = g.pop("db", None)
     if db is not None:
-        db.close()
+        pool.putconn(db)
 
 
 def q(sql, args=(), one=False):
-    cur = get_db().execute(sql, args)
-    rows = cur.fetchall()
+    db = get_db()
+    in_transaction = db.info.transaction_status != psycopg.pq.TransactionStatus.IDLE
+    try:
+        rows = db.execute(sql, args).fetchall()
+    except psycopg.OperationalError:
+        # Neon occasionally drops a connection mid-query. A read outside a transaction is
+        # safe to repeat once on a fresh connection; writes (ex) are never retried.
+        if in_transaction:
+            raise
+        pool.putconn(g.pop("db"))  # the pool discards it if it is no longer usable
+        rows = get_db().execute(sql, args).fetchall()
     return (rows[0] if rows else None) if one else rows
 
 
 def ex(sql, args=()):
-    db = get_db()
-    cur = db.execute(sql, args)
-    db.commit()
-    return cur.lastrowid
+    """Run an INSERT, UPDATE or DELETE. An INSERT returns the new row's id."""
+    insert = sql.lstrip().upper().startswith("INSERT")
+    if insert and "RETURNING" not in sql.upper():
+        sql += " RETURNING id"
+    cur = get_db().execute(sql, args)
+    return cur.fetchone()["id"] if insert else None
 
 
 def init_db():
-    """Create tables and a first admin account if the database is empty."""
+    """Create a first admin account if there are no users. Tables come from `alembic upgrade head`."""
     with app.app_context():
-        db = get_db()
-        with open(os.path.join(BASE_DIR, "schema.sql")) as f:
-            db.executescript(f.read())
+        if q("SELECT to_regclass('public.users') AS t", one=True)["t"] is None:
+            raise SystemExit("The database has no tables yet. Run: alembic upgrade head")
         if not q("SELECT 1 FROM users LIMIT 1"):
-            ex("INSERT INTO users (username, password_hash, full_name, role) VALUES (?,?,?,?)",
+            ex("INSERT INTO users (username, password_hash, full_name, role) VALUES (%s,%s,%s,%s)",
                ("admin", generate_password_hash("admin123"), "Farm Administrator", "admin"))
             print("Created admin account: username 'admin', password 'admin123'. Change it after logging in.")
 
@@ -84,7 +110,7 @@ def current_user():
     if uid is None:
         return None
     if "user" not in g:
-        g.user = q("SELECT * FROM users WHERE id=? AND active=1", (uid,), one=True)
+        g.user = q("SELECT * FROM users WHERE id=%s AND active=1", (uid,), one=True)
     return g.user
 
 
@@ -120,22 +146,29 @@ def inject():
             "cart_count": sum(cart.values()) if cart else 0, "today": date.today()}
 
 
+# NUMERIC columns arrive as Decimal; Decimal(str(v)) also takes ints and floats from Python code
 @app.template_filter("money")
 def money(v):
-    return f"₹{(v or 0):,.2f}"
+    return f"₹{Decimal(str(v or 0)):,.2f}"
 
 
 @app.template_filter("num")
 def num(v):
     if v is None:
         return ""
-    return f"{v:,.1f}".rstrip("0").rstrip(".")
+    return f"{Decimal(str(v)):,.1f}".rstrip("0").rstrip(".")
+
+
+@app.template_filter("dt")
+def dt(v, fmt="%Y-%m-%d %H:%M:%S"):
+    """A TIMESTAMPTZ shown in farm time."""
+    return v.astimezone(ZoneInfo(TIMEZONE)).strftime(fmt) if v else ""
 
 
 def age_text(dob):
     if not dob:
         return ""
-    d = date.fromisoformat(dob)
+    d = dob if isinstance(dob, date) else date.fromisoformat(dob)
     months = (date.today().year - d.year) * 12 + date.today().month - d.month
     if date.today().day < d.day:
         months -= 1
@@ -166,7 +199,7 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = q("SELECT * FROM users WHERE username=?", (request.form["username"].strip(),), one=True)
+        user = q("SELECT * FROM users WHERE username=%s", (request.form["username"].strip(),), one=True)
         if user and user["active"] and check_password_hash(user["password_hash"], request.form["password"]):
             session["user_id"] = user["id"]
             nxt = request.args.get("next", "")
@@ -189,11 +222,11 @@ def register():
         f = request.form
         if len(f["password"]) < 6:
             flash("Password must be at least 6 characters.", "error")
-        elif q("SELECT 1 FROM users WHERE username=?", (f["username"].strip(),)):
+        elif q("SELECT 1 FROM users WHERE username=%s", (f["username"].strip(),)):
             flash("That username is taken.", "error")
         else:
             uid = ex("INSERT INTO users (username, password_hash, full_name, phone, email, address, role)"
-                     " VALUES (?,?,?,?,?,?, 'customer')",
+                     " VALUES (%s,%s,%s,%s,%s,%s, 'customer')",
                      (f["username"].strip(), generate_password_hash(f["password"]), f["full_name"].strip(),
                       f.get("phone"), f.get("email"), f.get("address")))
             session["user_id"] = uid
@@ -208,7 +241,7 @@ def profile():
     user = current_user()
     if request.method == "POST":
         f = request.form
-        ex("UPDATE users SET full_name=?, phone=?, email=?, address=? WHERE id=?",
+        ex("UPDATE users SET full_name=%s, phone=%s, email=%s, address=%s WHERE id=%s",
            (f["full_name"], f.get("phone"), f.get("email"), f.get("address"), user["id"]))
         if f.get("new_password"):
             if not check_password_hash(user["password_hash"], f.get("old_password", "")):
@@ -217,7 +250,7 @@ def profile():
             if len(f["new_password"]) < 6:
                 flash("New password must be at least 6 characters.", "error")
                 return redirect(url_for("profile"))
-            ex("UPDATE users SET password_hash=? WHERE id=?",
+            ex("UPDATE users SET password_hash=%s WHERE id=%s",
                (generate_password_hash(f["new_password"]), user["id"]))
         flash("Profile saved.", "ok")
         return redirect(url_for("profile"))
@@ -230,7 +263,7 @@ def profile():
 @login_required("admin")
 def users():
     role = request.args.get("role", "")
-    sql = "SELECT * FROM users" + (" WHERE role=?" if role else "") + " ORDER BY role, full_name"
+    sql = "SELECT * FROM users" + (" WHERE role=%s" if role else "") + " ORDER BY role, full_name"
     return render_template("users.html", users=q(sql, (role,) if role else ()), role=role)
 
 
@@ -238,7 +271,7 @@ def users():
 @app.route("/admin/users/<int:uid>/edit", methods=["GET", "POST"])
 @login_required("admin")
 def user_form(uid=None):
-    u = q("SELECT * FROM users WHERE id=?", (uid,), one=True) if uid else None
+    u = q("SELECT * FROM users WHERE id=%s", (uid,), one=True) if uid else None
     if uid and not u:
         abort(404)
     if request.method == "POST":
@@ -248,7 +281,7 @@ def user_form(uid=None):
         if u and u["id"] == current_user()["id"] and (role != "admin" or not active):
             flash("You cannot remove your own admin access.", "error")
             return redirect(request.url)
-        clash = q("SELECT id FROM users WHERE username=? AND id<>?", (f["username"].strip(), uid or 0))
+        clash = q("SELECT id FROM users WHERE username=%s AND id<>%s", (f["username"].strip(), uid or 0))
         if clash:
             flash("That username is taken.", "error")
         elif not u and len(f.get("password", "")) < 6:
@@ -257,14 +290,14 @@ def user_form(uid=None):
             vals = (f["username"].strip(), f["full_name"], f.get("phone"), f.get("email"),
                     f.get("address"), role, active)
             if u:
-                ex("UPDATE users SET username=?, full_name=?, phone=?, email=?, address=?, role=?, active=?"
-                   " WHERE id=?", vals + (uid,))
+                ex("UPDATE users SET username=%s, full_name=%s, phone=%s, email=%s, address=%s, role=%s, active=%s"
+                   " WHERE id=%s", vals + (uid,))
                 if f.get("password"):
-                    ex("UPDATE users SET password_hash=? WHERE id=?",
+                    ex("UPDATE users SET password_hash=%s WHERE id=%s",
                        (generate_password_hash(f["password"]), uid))
             else:
                 ex("INSERT INTO users (username, full_name, phone, email, address, role, active, password_hash)"
-                   " VALUES (?,?,?,?,?,?,?,?)", vals + (generate_password_hash(f["password"]),))
+                   " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", vals + (generate_password_hash(f["password"]),))
             flash("User saved.", "ok")
             return redirect(url_for("users"))
     return render_template("user_form.html", u=u)
@@ -287,10 +320,10 @@ def cattle_list():
     sql = "SELECT * FROM cattle WHERE 1=1"
     args = []
     if status:
-        sql += " AND status=?"
+        sql += " AND status=%s"
         args.append(status)
     if s:
-        sql += " AND (tag_no LIKE ? OR name LIKE ? OR breed LIKE ?)"
+        sql += " AND (tag_no ILIKE %s OR name ILIKE %s OR breed ILIKE %s)"
         args += [f"%{s}%"] * 3
     rows = q(sql + " ORDER BY tag_no", args)
     return render_template("cattle_list.html", rows=rows, status=status, s=s)
@@ -313,7 +346,7 @@ def _save_photo(file):
 @app.route("/cattle/<int:cid>/edit", methods=["GET", "POST"])
 @login_required(*FARM)
 def cattle_form(cid=None):
-    c = q("SELECT * FROM cattle WHERE id=?", (cid,), one=True) if cid else None
+    c = q("SELECT * FROM cattle WHERE id=%s", (cid,), one=True) if cid else None
     if cid and not c:
         abort(404)
     if request.method == "POST":
@@ -322,7 +355,7 @@ def cattle_form(cid=None):
         vals["tag_no"] = (vals["tag_no"] or "").strip()
         if not vals["tag_no"]:
             flash("Tag number is required.", "error")
-        elif q("SELECT 1 FROM cattle WHERE tag_no=? AND id<>?", (vals["tag_no"], cid or 0)):
+        elif q("SELECT 1 FROM cattle WHERE tag_no=%s AND id<>%s", (vals["tag_no"], cid or 0)):
             flash("Another animal already has that tag number.", "error")
         else:
             photo = _save_photo(request.files.get("photo"))
@@ -330,14 +363,14 @@ def cattle_form(cid=None):
                 vals["photo"] = photo
             cols = list(vals)
             if c:
-                ex(f"UPDATE cattle SET {', '.join(k + '=?' for k in cols)} WHERE id=?",
+                ex(f"UPDATE cattle SET {', '.join(k + '=%s' for k in cols)} WHERE id=%s",
                    [vals[k] for k in cols] + [cid])
             else:
-                cid = ex(f"INSERT INTO cattle ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",
+                cid = ex(f"INSERT INTO cattle ({', '.join(cols)}) VALUES ({', '.join('%s' for _ in cols)})",
                          [vals[k] for k in cols])
             flash("Animal saved.", "ok")
             return redirect(url_for("cattle_profile", cid=cid))
-    dams = q("SELECT id, tag_no, name FROM cattle WHERE sex='Female' AND id<>? ORDER BY tag_no", (cid or 0,))
+    dams = q("SELECT id, tag_no, name FROM cattle WHERE sex='Female' AND id<>%s ORDER BY tag_no", (cid or 0,))
     return render_template("cattle_form.html", c=c, dams=dams, species=SPECIES, breeds=BREEDS)
 
 
@@ -345,14 +378,14 @@ def cattle_form(cid=None):
 @login_required(*FARM)
 def cattle_profile(cid):
     c = q("SELECT c.*, d.tag_no AS dam_tag, d.name AS dam_name FROM cattle c"
-          " LEFT JOIN cattle d ON d.id=c.dam_id WHERE c.id=?", (cid,), one=True)
+          " LEFT JOIN cattle d ON d.id=c.dam_id WHERE c.id=%s", (cid,), one=True)
     if not c:
         abort(404)
-    data = {k: q(f"SELECT * FROM {cfg['table']} WHERE cattle_id=? ORDER BY {cfg['date']} DESC LIMIT 10", (cid,))
+    data = {k: q(f"SELECT * FROM {cfg['table']} WHERE cattle_id=%s ORDER BY {cfg['date']} DESC LIMIT 10", (cid,))
             for k, cfg in RECORDS.items()}
-    calves = q("SELECT id, tag_no, name, dob FROM cattle WHERE dam_id=? ORDER BY dob", (cid,))
+    calves = q("SELECT id, tag_no, name, dob FROM cattle WHERE dam_id=%s ORDER BY dob", (cid,))
     milk30 = q("SELECT COALESCE(SUM(litres),0) t, COUNT(DISTINCT date) d FROM milk_records"
-               " WHERE cattle_id=? AND date>=?", (cid, (date.today() - timedelta(days=30)).isoformat()), one=True)
+               " WHERE cattle_id=%s AND date>=%s", (cid, (date.today() - timedelta(days=30)).isoformat()), one=True)
     return render_template("cattle_profile.html", c=c, data=data, calves=calves, milk30=milk30,
                            records=RECORDS)
 
@@ -360,9 +393,10 @@ def cattle_profile(cid):
 @app.route("/cattle/<int:cid>/delete", methods=["POST"])
 @login_required("admin")
 def cattle_delete(cid):
-    ex("DELETE FROM cattle WHERE id=?", (cid,))
+    ex("DELETE FROM cattle WHERE id=%s", (cid,))
     flash("Animal and all its records deleted.", "ok")
-    return redirect(url_for("cattle_list"))
+    back = request.form.get("back", "")  # the register sends its own URL, so search and filter are kept
+    return redirect(back if back.startswith("/cattle") and not back.startswith("//") else url_for("cattle_list"))
 
 
 # ---------------------------------------------------------------- health, vaccination, feeding, breeding, milk
@@ -433,24 +467,25 @@ GESTATION_DAYS = {"Buffalo": 310}  # others: 283
 def records(kind):
     cfg = RECORDS.get(kind) or abort(404)
     cid = request.args.get("cattle_id", type=int)
-    d_from, d_to = request.args.get("from", ""), request.args.get("to", "")
+    # a malformed date in the URL is ignored rather than sent to a DATE column
+    d_from, d_to = parse_date(request.args.get("from")), parse_date(request.args.get("to"))
     sql = (f"SELECT r.*, c.tag_no, c.name AS cname FROM {cfg['table']} r JOIN cattle c ON c.id=r.cattle_id"
            " WHERE 1=1")
     args = []
     if cid:
-        sql += " AND r.cattle_id=?"
+        sql += " AND r.cattle_id=%s"
         args.append(cid)
     if d_from:
-        sql += f" AND r.{cfg['date']}>=?"
+        sql += f" AND r.{cfg['date']}>=%s"
         args.append(d_from)
     if d_to:
-        sql += f" AND r.{cfg['date']}<=?"
+        sql += f" AND r.{cfg['date']}<=%s"
         args.append(d_to)
     rows = q(sql + f" ORDER BY r.{cfg['date']} DESC, r.id DESC LIMIT 500", args)
     animals = q("SELECT id, tag_no, name FROM cattle ORDER BY tag_no")
     labels = {f[0]: f[1] for f in cfg["fields"]}
     return render_template("records.html", kind=kind, cfg=cfg, rows=rows, animals=animals, cid=cid,
-                           d_from=d_from, d_to=d_to, labels=labels)
+                           d_from=d_from or "", d_to=d_to or "", labels=labels)
 
 
 @app.route("/records/<kind>/new", methods=["GET", "POST"])
@@ -458,7 +493,7 @@ def records(kind):
 @login_required(*FARM)
 def record_form(kind, rid=None):
     cfg = RECORDS.get(kind) or abort(404)
-    r = q(f"SELECT * FROM {cfg['table']} WHERE id=?", (rid,), one=True) if rid else None
+    r = q(f"SELECT * FROM {cfg['table']} WHERE id=%s", (rid,), one=True) if rid else None
     if rid and not r:
         abort(404)
     if request.method == "POST":
@@ -473,22 +508,22 @@ def record_form(kind, rid=None):
             for cid in cattle_ids:
                 row = dict(vals)
                 if kind == "breeding" and not row["expected_calving"]:
-                    species = q("SELECT species FROM cattle WHERE id=?", (cid,), one=True)
+                    species = q("SELECT species FROM cattle WHERE id=%s", (cid,), one=True)
                     days = GESTATION_DAYS.get(species["species"] if species else "", 283)
                     row["expected_calving"] = (date.fromisoformat(row["date"]) + timedelta(days=days)).isoformat()
                 row["cattle_id"] = cid
                 cols = list(row)
                 if r:
-                    ex(f"UPDATE {cfg['table']} SET {', '.join(k + '=?' for k in cols)} WHERE id=?",
+                    ex(f"UPDATE {cfg['table']} SET {', '.join(k + '=%s' for k in cols)} WHERE id=%s",
                        [row[k] for k in cols] + [rid])
                 else:
-                    ex(f"INSERT INTO {cfg['table']} ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",
+                    ex(f"INSERT INTO {cfg['table']} ({', '.join(cols)}) VALUES ({', '.join('%s' for _ in cols)})",
                        [row[k] for k in cols])
             flash(f"Saved {len(cattle_ids)} {cfg['one']}{'s' if len(cattle_ids) > 1 else ''}.", "ok")
             back = f.get("back")
             return redirect(back if back and back.startswith("/") and not back.startswith("//")
                             else url_for("records", kind=kind))
-    animals = q("SELECT id, tag_no, name, sex FROM cattle WHERE status='Active' OR id=? ORDER BY tag_no",
+    animals = q("SELECT id, tag_no, name, sex FROM cattle WHERE status='Active' OR id=%s ORDER BY tag_no",
                 (r["cattle_id"] if r else 0,))
     pre = request.args.get("cattle_id", type=int)
     return render_template("record_form.html", kind=kind, cfg=cfg, r=r, animals=animals, pre=pre,
@@ -499,7 +534,7 @@ def record_form(kind, rid=None):
 @login_required(*FARM)
 def record_delete(kind, rid):
     cfg = RECORDS.get(kind) or abort(404)
-    ex(f"DELETE FROM {cfg['table']} WHERE id=?", (rid,))
+    ex(f"DELETE FROM {cfg['table']} WHERE id=%s", (rid,))
     flash("Record deleted.", "ok")
     return redirect(request.referrer or url_for("records", kind=kind))
 
@@ -514,7 +549,7 @@ PRODUCT_CATEGORIES = ["Milk", "Ghee", "Curd & Buttermilk", "Paneer", "Butter", "
 @login_required()
 def shop():
     cat = request.args.get("category", "")
-    sql = "SELECT * FROM products WHERE active=1" + (" AND category=?" if cat else "") + " ORDER BY category, name"
+    sql = "SELECT * FROM products WHERE active=1" + (" AND category=%s" if cat else "") + " ORDER BY category, name"
     products = q(sql, (cat,) if cat else ())
     cats = [r["category"] for r in q("SELECT DISTINCT category FROM products WHERE active=1 ORDER BY category")]
     return render_template("shop.html", products=products, cats=cats, cat=cat)
@@ -522,9 +557,9 @@ def shop():
 
 def _cart_lines():
     cart = session.get("cart", {})
-    lines, total = [], 0.0
+    lines, total = [], Decimal(0)
     for pid, qty in cart.items():
-        p = q("SELECT * FROM products WHERE id=? AND active=1", (int(pid),), one=True)
+        p = q("SELECT * FROM products WHERE id=%s AND active=1", (int(pid),), one=True)
         if p:
             lines.append({"p": p, "qty": qty, "sub": p["price"] * qty})
             total += p["price"] * qty
@@ -534,13 +569,29 @@ def _cart_lines():
 @app.route("/cart/add/<int:pid>", methods=["POST"])
 @login_required()
 def cart_add(pid):
-    p = q("SELECT * FROM products WHERE id=? AND active=1", (pid,), one=True) or abort(404)
+    p = q("SELECT * FROM products WHERE id=%s AND active=1", (pid,), one=True) or abort(404)
     qty = max(request.form.get("qty", 1, type=int), 1)
     cart = session.get("cart", {})
     cart[str(pid)] = cart.get(str(pid), 0) + qty
     session["cart"] = cart
     flash(f"Added {p['name']} to your cart.", "ok")
     return redirect(request.referrer or url_for("shop"))
+
+
+@app.route("/cart/remove/<int:pid>", methods=["POST"])
+@login_required()
+def cart_remove(pid):
+    cart = session.get("cart", {})
+    if cart.pop(str(pid), None) is not None:
+        session["cart"] = cart
+        p = q("SELECT name FROM products WHERE id=%s", (pid,), one=True)
+        flash(f"Removed {p['name'] if p else 'the item'} from your cart.", "ok")
+    return redirect(url_for("cart"))
+
+
+def _valid_phone(phone):
+    """At least 10 digits; spaces, +, -, ( and ) allowed (e.g. +91 98220 00000)."""
+    return bool(re.fullmatch(r"[0-9 +()-]+", phone)) and 10 <= len(re.sub(r"\D", "", phone)) <= 13
 
 
 @app.route("/cart", methods=["GET", "POST"])
@@ -559,20 +610,26 @@ def cart():
         if not lines:
             flash("Your cart is empty.", "error")
             return redirect(url_for("shop"))
-        short = [l["p"]["name"] for l in lines if l["qty"] > l["p"]["stock"]]
+        f = request.form
+        phone, address = f.get("phone", "").strip(), f.get("address", "").strip()
+        if not _valid_phone(phone) or not address:
+            flash("Please enter a phone number (at least 10 digits) and a delivery address.", "error")
+            return render_template("cart.html", lines=lines, total=total, form=f)
+        with get_db().transaction():
+            # lock the products, then check stock, so two customers can't both buy the last one
+            stock = {r["id"]: r["stock"] for r in q("SELECT id, stock FROM products WHERE id = ANY(%s) FOR UPDATE",
+                                                   ([l["p"]["id"] for l in lines],))}
+            short = [l["p"]["name"] for l in lines if l["qty"] > stock[l["p"]["id"]]]
+            if not short:
+                oid = ex("INSERT INTO orders (user_id, total, phone, address, notes) VALUES (%s,%s,%s,%s,%s)",
+                         (current_user()["id"], total, phone, address, f.get("notes")))
+                for l in lines:
+                    ex("INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (%s,%s,%s,%s,%s)",
+                       (oid, l["p"]["id"], l["p"]["name"], l["p"]["price"], l["qty"]))
+                    ex("UPDATE products SET stock=stock-%s WHERE id=%s", (l["qty"], l["p"]["id"]))
         if short:
             flash("Not enough stock for: " + ", ".join(short), "error")
             return redirect(url_for("cart"))
-        f = request.form
-        db = get_db()
-        cur = db.execute("INSERT INTO orders (user_id, total, phone, address, notes) VALUES (?,?,?,?,?)",
-                         (current_user()["id"], total, f.get("phone"), f.get("address"), f.get("notes")))
-        oid = cur.lastrowid
-        for l in lines:
-            db.execute("INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?,?,?,?,?)",
-                       (oid, l["p"]["id"], l["p"]["name"], l["p"]["price"], l["qty"]))
-            db.execute("UPDATE products SET stock=stock-? WHERE id=?", (l["qty"], l["p"]["id"]))
-        db.commit()
         session["cart"] = {}
         flash(f"Order #{oid} placed. We will confirm it soon.", "ok")
         return redirect(url_for("order_detail", oid=oid))
@@ -583,18 +640,18 @@ def cart():
 @app.route("/orders")
 @login_required()
 def my_orders():
-    rows = q("SELECT * FROM orders WHERE user_id=? ORDER BY id DESC", (current_user()["id"],))
+    rows = q("SELECT * FROM orders WHERE user_id=%s ORDER BY id DESC", (current_user()["id"],))
     return render_template("orders.html", rows=rows, manage=False, status="")
 
 
 @app.route("/orders/<int:oid>")
 @login_required()
 def order_detail(oid):
-    o = q("SELECT o.*, u.full_name, u.username FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=?",
+    o = q("SELECT o.*, u.full_name, u.username FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=%s",
           (oid,), one=True) or abort(404)
     if current_user()["role"] == "customer" and o["user_id"] != current_user()["id"]:
         abort(403)
-    items = q("SELECT * FROM order_items WHERE order_id=?", (oid,))
+    items = q("SELECT * FROM order_items WHERE order_id=%s", (oid,))
     return render_template("order_detail.html", o=o, items=items, statuses=ORDER_STATUSES)
 
 
@@ -606,7 +663,7 @@ ORDER_STATUSES = ["Pending", "Confirmed", "Delivered", "Cancelled"]
 def manage_orders():
     status = request.args.get("status", "")
     sql = ("SELECT o.*, u.full_name FROM orders o JOIN users u ON u.id=o.user_id"
-           + (" WHERE o.status=?" if status else "") + " ORDER BY o.id DESC")
+           + (" WHERE o.status=%s" if status else "") + " ORDER BY o.id DESC")
     return render_template("orders.html", rows=q(sql, (status,) if status else ()), manage=True,
                            status=status, statuses=ORDER_STATUSES)
 
@@ -614,22 +671,22 @@ def manage_orders():
 @app.route("/admin/orders/<int:oid>/status", methods=["POST"])
 @login_required(*FARM)
 def order_status(oid):
-    o = q("SELECT * FROM orders WHERE id=?", (oid,), one=True) or abort(404)
     new = request.form["status"]
     if new not in ORDER_STATUSES:
         abort(400)
-    db = get_db()
-    # return stock when an order is cancelled, take it again if un-cancelled
-    if new == "Cancelled" and o["status"] != "Cancelled":
-        db.execute("UPDATE products SET stock=stock+(SELECT qty FROM order_items i WHERE i.order_id=? AND"
-                   " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=?)",
-                   (oid, oid))
-    elif o["status"] == "Cancelled" and new != "Cancelled":
-        db.execute("UPDATE products SET stock=stock-(SELECT qty FROM order_items i WHERE i.order_id=? AND"
-                   " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=?)",
-                   (oid, oid))
-    db.execute("UPDATE orders SET status=? WHERE id=?", (new, oid))
-    db.commit()
+    with get_db().transaction():
+        # the row lock stops two clicks on "Cancelled" from returning the stock twice
+        o = q("SELECT * FROM orders WHERE id=%s FOR UPDATE", (oid,), one=True) or abort(404)
+        # return stock when an order is cancelled, take it again if un-cancelled
+        if new == "Cancelled" and o["status"] != "Cancelled":
+            ex("UPDATE products SET stock=stock+(SELECT qty FROM order_items i WHERE i.order_id=%s AND"
+               " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=%s)",
+               (oid, oid))
+        elif o["status"] == "Cancelled" and new != "Cancelled":
+            ex("UPDATE products SET stock=stock-(SELECT qty FROM order_items i WHERE i.order_id=%s AND"
+               " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=%s)",
+               (oid, oid))
+        ex("UPDATE orders SET status=%s WHERE id=%s", (new, oid))
     flash(f"Order #{oid} marked {new}.", "ok")
     return redirect(request.referrer or url_for("manage_orders"))
 
@@ -644,7 +701,7 @@ def products():
 @app.route("/admin/products/<int:pid>/edit", methods=["GET", "POST"])
 @login_required(*FARM)
 def product_form(pid=None):
-    p = q("SELECT * FROM products WHERE id=?", (pid,), one=True) if pid else None
+    p = q("SELECT * FROM products WHERE id=%s", (pid,), one=True) if pid else None
     if pid and not p:
         abort(404)
     if request.method == "POST":
@@ -656,10 +713,10 @@ def product_form(pid=None):
             flash("Price and stock must be numbers.", "error")
             return render_template("product_form.html", p=p, cats=PRODUCT_CATEGORIES)
         if p:
-            ex("UPDATE products SET name=?, category=?, description=?, price=?, unit=?, stock=?, active=? WHERE id=?",
+            ex("UPDATE products SET name=%s, category=%s, description=%s, price=%s, unit=%s, stock=%s, active=%s WHERE id=%s",
                vals + (pid,))
         else:
-            ex("INSERT INTO products (name, category, description, price, unit, stock, active) VALUES (?,?,?,?,?,?,?)",
+            ex("INSERT INTO products (name, category, description, price, unit, stock, active) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                vals)
         flash("Product saved.", "ok")
         return redirect(url_for("products"))
@@ -686,12 +743,12 @@ def calendar():
     if current_user()["role"] in FARM and days:
         lo, hi = days[0]["date"].isoformat(), days[-1]["date"].isoformat()
         for r in q("SELECT v.next_due d, c.tag_no, v.vaccine FROM vaccinations v JOIN cattle c ON c.id=v.cattle_id"
-                   " WHERE v.next_due BETWEEN ? AND ?", (lo, hi)):
-            events.setdefault(r["d"], []).append(f"Vaccine due: {r['tag_no']} ({r['vaccine']})")
+                   " WHERE v.next_due BETWEEN %s AND %s", (lo, hi)):
+            events.setdefault(r["d"].isoformat(), []).append(f"Vaccine due: {r['tag_no']} ({r['vaccine']})")
         for r in q("SELECT b.expected_calving d, c.tag_no FROM breedings b JOIN cattle c ON c.id=b.cattle_id"
                    " WHERE b.actual_calving IS NULL AND b.pregnancy<>'Not pregnant'"
-                   " AND b.expected_calving BETWEEN ? AND ?", (lo, hi)):
-            events.setdefault(r["d"], []).append(f"Calving expected: {r['tag_no']}")
+                   " AND b.expected_calving BETWEEN %s AND %s", (lo, hi)):
+            events.setdefault(r["d"].isoformat(), []).append(f"Calving expected: {r['tag_no']}")
     # Shaka and (Chaitradi) Vikram Samvat years both begin at Chaitra
     overview = []
     for m in months:
@@ -732,17 +789,17 @@ def dashboard():
     stats = {
         "active": q("SELECT COUNT(*) n FROM cattle WHERE status='Active'", one=True)["n"],
         "female": q("SELECT COUNT(*) n FROM cattle WHERE status='Active' AND sex='Female'", one=True)["n"],
-        "milk_today": q("SELECT COALESCE(SUM(litres),0) n FROM milk_records WHERE date=?", (ti,), one=True)["n"],
-        "milk_month": q("SELECT COALESCE(SUM(litres),0) n FROM milk_records WHERE date>=?", (month_start,),
+        "milk_today": q("SELECT COALESCE(SUM(litres),0) n FROM milk_records WHERE date=%s", (ti,), one=True)["n"],
+        "milk_month": q("SELECT COALESCE(SUM(litres),0) n FROM milk_records WHERE date>=%s", (month_start,),
                         one=True)["n"],
         "pregnant": q("SELECT COUNT(DISTINCT cattle_id) n FROM breedings WHERE pregnancy='Confirmed'"
                       " AND actual_calving IS NULL", one=True)["n"],
         "pending_orders": q("SELECT COUNT(*) n FROM orders WHERE status='Pending'", one=True)["n"],
-        "sales_month": q("SELECT COALESCE(SUM(total),0) n FROM orders WHERE status<>'Cancelled' AND created_at>=?",
+        "sales_month": q("SELECT COALESCE(SUM(total),0) n FROM orders WHERE status<>'Cancelled' AND created_at>=%s",
                          (month_start,), one=True)["n"],
     }
     vacc_due = q("SELECT v.*, c.tag_no, c.name cname FROM vaccinations v JOIN cattle c ON c.id=v.cattle_id"
-                 " WHERE c.status='Active' AND v.next_due<=? AND NOT EXISTS (SELECT 1 FROM vaccinations v2"
+                 " WHERE c.status='Active' AND v.next_due<=%s AND NOT EXISTS (SELECT 1 FROM vaccinations v2"
                  " WHERE v2.cattle_id=v.cattle_id AND v2.vaccine=v.vaccine AND v2.date_given>v.date_given)"
                  " ORDER BY v.next_due", (soon,))
     calvings = q("SELECT b.*, c.tag_no, c.name cname FROM breedings b JOIN cattle c ON c.id=b.cattle_id"
@@ -750,9 +807,9 @@ def dashboard():
     recent_health = q("SELECT h.*, c.tag_no FROM health_records h JOIN cattle c ON c.id=h.cattle_id"
                       " ORDER BY h.date DESC, h.id DESC LIMIT 5")
     days = [(t - timedelta(days=i)) for i in range(13, -1, -1)]
-    by_day = {r["date"]: r["l"] for r in q("SELECT date, SUM(litres) l FROM milk_records WHERE date>=?"
-                                            " GROUP BY date", (days[0].isoformat(),))}
-    milk = [{"d": d, "l": by_day.get(d.isoformat(), 0)} for d in days]
+    by_day = {r["date"]: r["l"] for r in q("SELECT date, SUM(litres) l FROM milk_records WHERE date>=%s"
+                                            " GROUP BY date", (days[0],))}  # keyed by date objects
+    milk = [{"d": d, "l": by_day.get(d, 0)} for d in days]
     m = panchang.month_of(t)
     return render_template("dashboard.html", stats=stats, vacc_due=vacc_due, calvings=calvings,
                            recent_health=recent_health, milk=milk, milk_max=max([x["l"] for x in milk] + [1]),
@@ -764,23 +821,23 @@ def _report_data(d_from, d_to):
     return {
         "herd": q("SELECT species, breed, sex, status, COUNT(*) n FROM cattle GROUP BY species, breed, sex, status"
                   " ORDER BY status, species, breed"),
-        "milk_month": q("SELECT substr(date,1,7) month, SUM(litres) litres, COUNT(DISTINCT cattle_id) animals"
-                        " FROM milk_records WHERE date BETWEEN ? AND ? GROUP BY month ORDER BY month", a),
+        "milk_month": q("SELECT to_char(date, 'YYYY-MM') AS month, SUM(litres) litres, COUNT(DISTINCT cattle_id) animals"
+                        " FROM milk_records WHERE date BETWEEN %s AND %s GROUP BY month ORDER BY month", a),
         "milk_animal": q("SELECT c.tag_no, c.name, SUM(m.litres) litres, COUNT(DISTINCT m.date) days,"
                          " ROUND(SUM(m.litres)*1.0/COUNT(DISTINCT m.date),2) per_day FROM milk_records m"
-                         " JOIN cattle c ON c.id=m.cattle_id WHERE m.date BETWEEN ? AND ?"
+                         " JOIN cattle c ON c.id=m.cattle_id WHERE m.date BETWEEN %s AND %s"
                          " GROUP BY c.id ORDER BY litres DESC", a),
-        "costs": q("SELECT 'Health' item, COALESCE(SUM(cost),0) amount FROM health_records WHERE date BETWEEN ? AND ?"
+        "costs": q("SELECT 'Health' item, COALESCE(SUM(cost),0) amount FROM health_records WHERE date BETWEEN %s AND %s"
                    " UNION ALL SELECT 'Vaccination', COALESCE(SUM(cost),0) FROM vaccinations"
-                   " WHERE date_given BETWEEN ? AND ?"
-                   " UNION ALL SELECT 'Feed', COALESCE(SUM(cost),0) FROM feedings WHERE date BETWEEN ? AND ?", a * 3),
-        "feed": q("SELECT feed_type, SUM(quantity_kg) kg, SUM(cost) cost FROM feedings WHERE date BETWEEN ? AND ?"
+                   " WHERE date_given BETWEEN %s AND %s"
+                   " UNION ALL SELECT 'Feed', COALESCE(SUM(cost),0) FROM feedings WHERE date BETWEEN %s AND %s", a * 3),
+        "feed": q("SELECT feed_type, SUM(quantity_kg) kg, SUM(cost) cost FROM feedings WHERE date BETWEEN %s AND %s"
                   " GROUP BY feed_type ORDER BY kg DESC", a),
         "sales": q("SELECT i.name product, SUM(i.qty) qty, SUM(i.qty*i.price) amount FROM order_items i"
                    " JOIN orders o ON o.id=i.order_id WHERE o.status<>'Cancelled'"
-                   " AND date(o.created_at) BETWEEN ? AND ? GROUP BY i.name ORDER BY amount DESC", a),
+                   " AND o.created_at::date BETWEEN %s AND %s GROUP BY i.name ORDER BY amount DESC", a),
         "breeding": q("SELECT c.tag_no, b.date, b.method, b.pregnancy, b.expected_calving, b.actual_calving"
-                      " FROM breedings b JOIN cattle c ON c.id=b.cattle_id WHERE b.date BETWEEN ? AND ?"
+                      " FROM breedings b JOIN cattle c ON c.id=b.cattle_id WHERE b.date BETWEEN %s AND %s"
                       " ORDER BY b.date DESC", a),
     }
 
@@ -815,7 +872,7 @@ def report_csv(name):
     w = csv.writer(buf)
     if rows:
         w.writerow(rows[0].keys())
-        w.writerows([tuple(r) for r in rows])
+        w.writerows([list(r.values()) for r in rows])  # dict rows: tuple(r) would give the keys
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={name}_{d_from}_{d_to}.csv"})
 
@@ -828,6 +885,13 @@ def forbidden(e):
 @app.errorhandler(404)
 def not_found(e):
     return render_template("error.html", code=404, msg="Page not found."), 404
+
+
+@app.errorhandler(psycopg.errors.DataError)
+def bad_value(e):
+    # e.g. a date or number typed by hand that PostgreSQL can't read; SQLite used to store it as text
+    return render_template("error.html", code=400, msg="Some of the values entered are not valid. "
+                                                       "Please go back and check dates and numbers."), 400
 
 
 init_db()

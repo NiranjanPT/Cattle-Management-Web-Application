@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Order #{{ o.id }} <span class="badge">{{ o.status }}</span></h1>
 <div class="card">
-<dl class="facts"><dt>Placed</dt><dd>{{ o.created_at }}</dd><dt>Customer</dt><dd>{{ o.full_name }}</dd>
+<dl class="facts"><dt>Placed</dt><dd>{{ o.created_at|dt }}</dd><dt>Customer</dt><dd>{{ o.full_name }}</dd>
 <dt>Phone</dt><dd>{{ o.phone or '' }}</dd><dt>Address</dt><dd>{{ o.address or '' }}</dd>{% if o.notes %}<dt>Notes</dt><dd>{{ o.notes }}</dd>{% endif %}</dl>
 </div>
 <div class="card table-wrap"><table>

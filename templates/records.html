@@ -18,7 +18,7 @@
 <tr><td><a href="{{ url_for('cattle_profile', cid=r.cattle_id) }}">{{ r.tag_no }}</a> <span class="muted small">{{ r.cname or '' }}</span></td>
 {% for f in cfg.fields if f[0] != 'notes' %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">
   {%- set val = r[f[0]] -%}
-  {%- if f[0] == 'next_due' and val -%}<span class="badge {{ 'bad' if val < today.isoformat() else '' }}">{{ val }}</span>
+  {%- if f[0] == 'next_due' and val -%}<span class="badge {{ 'bad' if val < today else '' }}">{{ val }}</span>
   {%- elif f[0] == 'pregnancy' -%}<span class="badge {{ 'ok' if val == 'Confirmed' else 'bad' if val == 'Not pregnant' else 'warn' }}">{{ val }}</span>
   {%- elif val is none -%}{%- elif f[2] == 'number' -%}{{ val|num }}{%- else -%}{{ val }}{%- endif -%}</td>{% endfor %}
 <td class="no-print"><a href="{{ url_for('record_form', kind=kind, rid=r.id) }}">Edit</a>

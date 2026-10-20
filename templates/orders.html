@@ -5,7 +5,7 @@
 {% for s in statuses %}<a href="{{ url_for('manage_orders', status=s) }}" class="{{ 'on' if status == s }}">{{ s }}</a>{% endfor %}</div>{% endif %}
 <div class="card table-wrap"><table>
 <tr><th>Order</th><th>Date</th>{% if manage %}<th>Customer</th>{% endif %}<th class="n">Total</th><th>Status</th>{% if manage %}<th>Change status</th>{% endif %}</tr>
-{% for o in rows %}<tr><td><a href="{{ url_for('order_detail', oid=o.id) }}">#{{ o.id }}</a></td><td>{{ o.created_at }}</td>
+{% for o in rows %}<tr><td><a href="{{ url_for('order_detail', oid=o.id) }}">#{{ o.id }}</a></td><td>{{ o.created_at|dt }}</td>
 {% if manage %}<td>{{ o.full_name }}</td>{% endif %}<td class="n">{{ o.total|money }}</td>
 <td><span class="badge {{ 'ok' if o.status == 'Delivered' else 'bad' if o.status == 'Cancelled' else 'warn' if o.status == 'Pending' else '' }}">{{ o.status }}</span></td>
 {% if manage %}<td><form method="post" action="{{ url_for('order_status', oid=o.id) }}" class="row">
