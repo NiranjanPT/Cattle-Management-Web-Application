@@ -62,26 +62,8 @@ create their own accounts from the login page.
 
 The data lives in your Neon database. Neon keeps a restore history (point-in-time
 restore) and you can make a backup copy any time by creating a branch, or with
-`pg_dump "$DATABASE_URL" > backup.sql`. When the app runs on your computer, animal
-photos are saved in `public/static/uploads/`; back that folder up too. On Vercel they are
-stored in Vercel Blob.
-
-## Put it online (Vercel)
-
-The GitHub repository is connected to a Vercel project, so every push to `main` is
-deployed automatically. `vercel.json` runs the app in Singapore (`sin1`), next to the
-Neon database. One-time setup with the Vercel CLI (`npm i -g vercel`, then `vercel login`):
-
-```bash
-vercel link                                   # pick the existing project
-vercel env add DATABASE_URL production < file-with-the-url   # or add both in the dashboard:
-vercel env add SECRET_KEY production < file-with-the-key     # Settings > Environment Variables
-vercel blob create-store cattle-photos --access public --region sin1 --yes
-```
-
-`DATABASE_URL_TEST` is only for the tests and is never added to Vercel. Creating the Blob
-store with `--yes` connects it to the project, which is all the photo upload needs. On
-Vercel, uploads are limited to 4 MB per photo, and "today" is India's date.
+`pg_dump "$DATABASE_URL" > backup.sql`. Animal photos are still saved on this computer,
+in `static/uploads/`; back that folder up too.
 
 ### Changing the database later
 Schema changes go in a new Alembic migration: `alembic revision -m "what changed"`, write
@@ -149,8 +131,7 @@ from a printed panchang for your town.
 - `seed_demo.py`: sample data
 - `tests/`: automated tests
 - `.env.example`: settings to copy into `.env`
-- `templates/`: HTML pages, `public/static/style.css`: styling
-- `vercel.json`, `.python-version`, `.vercelignore`: settings for Vercel
+- `templates/`: HTML pages, `static/style.css`: styling
 
 ## Ideas for a next version
 Local sunrise by town for the calendar; SMS or WhatsApp reminders for vaccines;
