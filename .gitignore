@@ -5,3 +5,5 @@ static/uploads/
 .env
 .venv/
 .pytest_cache/
+*.log
+backups/
