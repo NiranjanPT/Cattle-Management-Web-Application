@@ -1,0 +1,14 @@
+# Never uploaded by `vercel deploy` (the CLI uses this file instead of .gitignore)
+.env
+.env.local
+.env.*.local
+.venv
+.git
+backups
+cattle.db
+.secret_key
+__pycache__
+.pytest_cache
+*.log
+public/static/uploads
+tests

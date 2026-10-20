@@ -12,7 +12,7 @@
   </div>
 </div>
 <div class="card profile-head">
-  {% if c.photo %}<img class="photo" src="{{ url_for('static', filename='uploads/' + c.photo) }}" alt="Photo of {{ c.tag_no }}">
+  {% if c.photo %}<img class="photo" src="{{ photo_url(c.photo) }}" alt="Photo of {{ c.tag_no }}">
   {% else %}<div class="photo">🐄</div>{% endif %}
   <dl class="facts">
     <dt>Type</dt><dd>{{ c.species }}, {{ c.sex }}</dd>

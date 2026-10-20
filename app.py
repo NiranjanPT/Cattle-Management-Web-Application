@@ -15,15 +15,18 @@ from dotenv import load_dotenv
 from flask import (Flask, Response, abort, flash, g, redirect, render_template,
                    request, session, url_for)
 from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+from psycopg_pool import ConnectionPool, PoolTimeout
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 import panchang
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+# Static files live in public/static: Vercel serves public/ from its CDN, Flask serves it locally.
+STATIC_DIR = os.path.join(BASE_DIR, "public", "static")
+UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")  # photos when running locally; on Vercel they go to Blob
 TIMEZONE = "Asia/Kolkata"  # order times and "this month" are counted in farm time
+ON_VERCEL = bool(os.environ.get("VERCEL"))  # set by Vercel on every deployment
 
 load_dotenv(os.path.join(BASE_DIR, ".env"))  # real environment variables win over .env
 
@@ -34,8 +37,14 @@ def _env(name):
     return os.environ[name]
 
 
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # photo uploads
+def farm_today():
+    """Today's date in India. The server's own clock may be UTC (it is on Vercel)."""
+    return datetime.now(ZoneInfo(TIMEZONE)).date()
+
+
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
+# Vercel rejects request bodies over 4.5 MB, so photos are capped lower there.
+app.config["MAX_CONTENT_LENGTH"] = (4 if ON_VERCEL else 5) * 1024 * 1024
 app.secret_key = _env("SECRET_KEY")
 
 # ---------------------------------------------------------------- database
@@ -49,8 +58,11 @@ def _configure(conn):
 # Autocommit: each q()/ex() stands alone; group statements with `with get_db().transaction():`.
 # prepare_threshold=None because Neon's pooled endpoint (PgBouncer) can't keep prepared statements.
 # check_connection replaces connections that died while Neon's compute was asleep.
+# connect_timeout: a connection attempt that stalls on the network fails after 10 s so the pool can try
+# again, instead of waiting psycopg's default of about 2 minutes.
 pool = ConnectionPool(_env("DATABASE_URL"), min_size=1, max_size=int(os.environ.get("DB_POOL_SIZE", 5)),
-                      kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None},
+                      kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None,
+                              "connect_timeout": 10},
                       configure=_configure, check=ConnectionPool.check_connection, open=True)
 atexit.register(pool.close)
 
@@ -95,9 +107,17 @@ def ex(sql, args=()):
 def init_db():
     """Create a first admin account if there are no users. Tables come from `alembic upgrade head`."""
     with app.app_context():
-        if q("SELECT to_regclass('public.users') AS t", one=True)["t"] is None:
+        try:
+            tables_exist = q("SELECT to_regclass('public.users') AS t", one=True)["t"] is not None
+            has_users = tables_exist and bool(q("SELECT 1 FROM users LIMIT 1"))
+        except (psycopg.OperationalError, PoolTimeout) as e:
+            # A brief network problem at start-up must not crash the app (on Vercel that would fail
+            # the request); this check only matters for a brand-new, empty database.
+            app.logger.warning("Database not reachable at start-up (%s); skipping the first-admin check.", e)
+            return
+        if not tables_exist:
             raise SystemExit("The database has no tables yet. Run: alembic upgrade head")
-        if not q("SELECT 1 FROM users LIMIT 1"):
+        if not has_users:
             ex("INSERT INTO users (username, password_hash, full_name, role) VALUES (%s,%s,%s,%s)",
                ("admin", generate_password_hash("admin123"), "Farm Administrator", "admin"))
             print("Created admin account: username 'admin', password 'admin123'. Change it after logging in.")
@@ -143,7 +163,7 @@ def csrf_protect():
 def inject():
     cart = session.get("cart", {})
     return {"user": current_user(), "csrf_token": session.get("csrf", ""),
-            "cart_count": sum(cart.values()) if cart else 0, "today": date.today()}
+            "cart_count": sum(cart.values()) if cart else 0, "today": farm_today()}
 
 
 # NUMERIC columns arrive as Decimal; Decimal(str(v)) also takes ints and floats from Python code
@@ -169,8 +189,8 @@ def age_text(dob):
     if not dob:
         return ""
     d = dob if isinstance(dob, date) else date.fromisoformat(dob)
-    months = (date.today().year - d.year) * 12 + date.today().month - d.month
-    if date.today().day < d.day:
+    months = (farm_today().year - d.year) * 12 + farm_today().month - d.month
+    if farm_today().day < d.day:
         months -= 1
     y, m = divmod(max(months, 0), 12)
     return f"{y} y {m} m" if y else f"{m} m"
@@ -336,10 +356,38 @@ def _save_photo(file):
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
         flash("Photo must be a JPG, PNG, WEBP or GIF image.", "error")
         return None
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     name = secrets.token_hex(8) + "_" + secure_filename(file.filename)
+    if _blob_configured():
+        # Vercel Blob: the photo column stores the photo's full https:// address
+        from vercel.blob import sync as blob
+        try:
+            return blob.put_blob(f"cattle/{name}", file.read(), access="public",
+                                 content_type=file.mimetype or None).url
+        except blob.BlobError as e:
+            app.logger.warning("photo upload to Vercel Blob failed: %s", e)
+            flash("The photo could not be saved; the other details were saved. Please try the photo again.", "error")
+            return None
+    if ON_VERCEL:  # Vercel's disk is read-only
+        flash("Photo storage is not set up on this site yet; the other details were saved.", "error")
+        return None
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     file.save(os.path.join(UPLOAD_DIR, name))
-    return name
+    return name  # a file name in UPLOAD_DIR
+
+
+def _blob_configured():
+    # Connecting a Blob store to the Vercel project sets BLOB_STORE_ID; a token works too (e.g. locally)
+    return bool(os.environ.get("BLOB_STORE_ID") or os.environ.get("BLOB_READ_WRITE_TOKEN"))
+
+
+def photo_url(photo):
+    """Blob photos are stored as full URLs; photos saved locally as a file name."""
+    if not photo:
+        return ""
+    return photo if photo.startswith("https://") else url_for("static", filename="uploads/" + photo)
+
+
+app.jinja_env.globals["photo_url"] = photo_url
 
 
 @app.route("/cattle/new", methods=["GET", "POST"])
@@ -385,7 +433,7 @@ def cattle_profile(cid):
             for k, cfg in RECORDS.items()}
     calves = q("SELECT id, tag_no, name, dob FROM cattle WHERE dam_id=%s ORDER BY dob", (cid,))
     milk30 = q("SELECT COALESCE(SUM(litres),0) t, COUNT(DISTINCT date) d FROM milk_records"
-               " WHERE cattle_id=%s AND date>=%s", (cid, (date.today() - timedelta(days=30)).isoformat()), one=True)
+               " WHERE cattle_id=%s AND date>=%s", (cid, (farm_today() - timedelta(days=30)).isoformat()), one=True)
     return render_template("cattle_profile.html", c=c, data=data, calves=calves, milk30=milk30,
                            records=RECORDS)
 
@@ -728,7 +776,7 @@ def product_form(pid=None):
 @app.route("/calendar")
 @login_required()
 def calendar():
-    today = date.today()
+    today = farm_today()
     year = request.args.get("year", type=int) or panchang.year_for(today)
     year = min(max(year, 1900), 2100)
     months = panchang.lunar_months(year)
@@ -774,7 +822,7 @@ def nakshatras():
                      "rashi": panchang.RASHIS[int(start // 30)],
                      "from": f"{int(start)}°{round((start % 1) * 60):02d}′",
                      "to": f"{int(start + panchang.NAK_SPAN)}°{round(((start + panchang.NAK_SPAN) % 1) * 60):02d}′"})
-    return render_template("nakshatras.html", rows=rows, today=panchang.day_info(date.today()))
+    return render_template("nakshatras.html", rows=rows, today=panchang.day_info(farm_today()))
 
 
 # ---------------------------------------------------------------- dashboard & reports
@@ -782,7 +830,7 @@ def nakshatras():
 @app.route("/dashboard")
 @login_required(*FARM)
 def dashboard():
-    t = date.today()
+    t = farm_today()
     ti = t.isoformat()
     soon = (t + timedelta(days=14)).isoformat()
     month_start = t.replace(day=1).isoformat()
@@ -847,7 +895,7 @@ REPORT_TITLES = {"herd": "Herd summary", "milk_month": "Milk by month", "milk_an
 
 
 def _range():
-    t = date.today()
+    t = farm_today()
     d_from = parse_date(request.args.get("from"), t - timedelta(days=90))
     d_to = parse_date(request.args.get("to"), t)
     return d_from.isoformat(), d_to.isoformat()

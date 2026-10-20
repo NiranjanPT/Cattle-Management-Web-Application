@@ -1,9 +1,11 @@
 cattle.db
 .secret_key
 __pycache__/
-static/uploads/
+public/static/uploads/
 .env
 .venv/
 .pytest_cache/
 *.log
 backups/
+.vercel/
+.env.local

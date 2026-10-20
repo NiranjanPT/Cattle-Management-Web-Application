@@ -363,3 +363,93 @@ def test_remove_ignores_outside_back_link(fresh_db, farm):
     admin = login(fresh_db, "admin", "admin123")
     r = admin.post(f"/cattle/{cid}/delete", {"back": "//evil.example/cattle"})
     assert r.headers["Location"] == "/cattle"
+
+
+# ------------------------------------------------------------------ Vercel: static files, photos, farm date
+
+PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+       b"\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
+
+
+def test_stylesheet_served_from_public(fresh_db, farm):
+    from conftest import Browser
+    r = Browser(fresh_db.app.test_client()).get("/static/style.css")
+    assert r.status_code == 200 and "--accent" in r.get_data(as_text=True)
+
+
+def add_with_photo(b, tag):
+    import io
+    return b.post("/cattle/new", {"tag_no": tag, "sex": "Female", "species": "Cow", "status": "Active",
+                                  "photo": (io.BytesIO(PNG), "my cow.png", "image/png")},
+                  content_type="multipart/form-data", follow_redirects=True)
+
+
+def test_photo_saved_locally(fresh_db, farm, tmp_path, monkeypatch):
+    monkeypatch.setattr(fresh_db, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.delenv("BLOB_STORE_ID", raising=False)
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    html = add_with_photo(login(fresh_db, "staff", "staff123"), "PH-1").get_data(as_text=True)
+    saved = list(tmp_path.iterdir())
+    assert len(saved) == 1 and saved[0].name.endswith("_my_cow.png") and saved[0].read_bytes() == PNG
+    assert f'src="/static/uploads/{saved[0].name}"' in html
+
+
+def test_photo_goes_to_vercel_blob(fresh_db, farm, monkeypatch):
+    from types import SimpleNamespace
+    from vercel.blob import sync as blob
+    sent = {}
+
+    def fake_put(pathname, body, **kw):
+        sent.update(pathname=pathname, body=body, **kw)
+        return SimpleNamespace(url=f"https://store1.public.blob.vercel-storage.com/{pathname}")
+    monkeypatch.setenv("BLOB_STORE_ID", "store_test")
+    monkeypatch.setattr(blob, "put_blob", fake_put)
+    html = add_with_photo(login(fresh_db, "staff", "staff123"), "PH-2").get_data(as_text=True)
+    assert sent["pathname"].startswith("cattle/") and sent["body"] == PNG
+    assert sent["access"] == "public" and sent["content_type"] == "image/png"
+    assert f'src="https://store1.public.blob.vercel-storage.com/{sent["pathname"]}"' in html
+    with fresh_db.app.app_context():
+        assert fresh_db.q("SELECT photo FROM cattle WHERE tag_no='PH-2'", one=True)["photo"].startswith("https://")
+
+
+def test_blob_failure_keeps_the_animal(fresh_db, farm, monkeypatch):
+    from vercel.blob import sync as blob
+
+    def broken_put(*a, **kw):
+        raise blob.BlobServiceNotAvailable("down")
+    monkeypatch.setenv("BLOB_STORE_ID", "store_test")
+    monkeypatch.setattr(blob, "put_blob", broken_put)
+    html = add_with_photo(login(fresh_db, "staff", "staff123"), "PH-3").get_data(as_text=True)
+    assert "The photo could not be saved" in html and "PH-3" in html
+    with fresh_db.app.app_context():
+        assert fresh_db.q("SELECT photo FROM cattle WHERE tag_no='PH-3'", one=True)["photo"] is None
+
+
+def test_on_vercel_without_blob_skips_photo(fresh_db, farm, tmp_path, monkeypatch):
+    monkeypatch.setattr(fresh_db, "ON_VERCEL", True)
+    monkeypatch.setattr(fresh_db, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.delenv("BLOB_STORE_ID", raising=False)
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    html = add_with_photo(login(fresh_db, "staff", "staff123"), "PH-4").get_data(as_text=True)
+    assert "Photo storage is not set up" in html and list(tmp_path.iterdir()) == []
+
+
+def test_today_is_the_farm_date(fresh_db):
+    assert fresh_db.farm_today() == datetime.now(ZoneInfo("Asia/Kolkata")).date()
+
+
+def test_startup_survives_unreachable_database(fresh_db, monkeypatch):
+    def down(*a, **kw):
+        raise psycopg.OperationalError("connection timeout expired")
+    monkeypatch.setattr(fresh_db, "q", down)
+    fresh_db.init_db()  # logs a warning instead of crashing the app
+
+
+def test_startup_still_stops_without_tables(fresh_db, monkeypatch):
+    monkeypatch.setattr(fresh_db, "q", lambda sql, args=(), one=False: {"t": None} if one else [])
+    with pytest.raises(SystemExit, match="alembic upgrade head"):
+        fresh_db.init_db()
+
+
+def test_pool_has_a_connect_timeout(fresh_db):
+    assert fresh_db.pool.kwargs["connect_timeout"] == 10
