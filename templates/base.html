@@ -27,6 +27,7 @@
         <a href="{{ url_for('products') }}">Products and stock</a>
         <a href="{{ url_for('manage_orders') }}">Customer orders</a>
       </div></details>
+      <a href="{{ url_for('tasks') }}" class="{{ 'on' if ep and ep.startswith('task') }}">Tasks{% if tasks_due %} <span class="badge bad" title="due today or overdue">{{ tasks_due }}</span>{% endif %}</a>
       <a href="{{ url_for('calendar') }}" class="{{ 'on' if ep and ep.startswith('calendar') or ep == 'nakshatras' }}">Calendar</a>
       <a href="{{ url_for('reports') }}" class="{{ 'on' if ep == 'reports' }}">Reports</a>
       {% if user.role == 'admin' %}<a href="{{ url_for('users') }}" class="{{ 'on' if ep in ('users', 'user_form') }}">Users</a>{% endif %}

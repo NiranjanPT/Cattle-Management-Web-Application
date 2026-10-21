@@ -101,7 +101,8 @@ take a few minutes.
 | Breeding | AI or natural service, bull or semen ID, pregnancy status, expected calving (filled automatically: 283 days for cows, 310 for buffaloes), actual calving and calf tag. |
 | Milk production | Morning and evening litres per animal. |
 | Dairy shop | Product catalogue (milk, ghee, curd, paneer, manure...) with stock. Customers add to cart and place pay-on-delivery orders; stock is reduced, and returned if staff cancel the order. Staff manage products and order status. |
-| Hindu calendar | Chaitra to Phalguna for any year (1900 to 2100), including adhika months. Each day shows tithi, paksha, nakshatra with pada, and the moon's rashi; Purnima, Amavasya and Ekadashi are marked. A year overview lists each month's start, Purnima and end, and a reference page lists all 27 nakshatras with their span, ruling planet, deity and symbol. Farm events (vaccines due, expected calvings) appear on the calendar days. |
+| Hindu calendar | Chaitra to Phalguna for any year (1900 to 2100), including adhika months. Each day shows tithi, paksha, nakshatra with pada, the moon's rashi, sunrise time and Agnivas (whether Agni is on earth, the day for havan); Purnima, Amavasya and Ekadashi are marked, and the Agni Nakshatra (Kathiri) period in May is outlined. A year overview lists each month's start, Purnima and end, and a reference page lists all 27 nakshatras with their span, ruling planet, deity and symbol. Farm events (vaccines due, expected calvings, scheduled tasks) appear on the calendar days, and **+** on a day schedules a task. |
+| Tasks | Schedule farm work: vaccination, health or deworming, feeding, breeding/AI, milking, havan/puja or anything else, for one animal, several or the whole herd, on a date, optionally repeating (daily, weekly, monthly, yearly), assigned to a staff member. Tasks show on the Tasks page, the calendar, the dashboard (this week, with overdue ones flagged), each animal's page and as a count in the menu. **Done →** on a record-type task opens that record form already filled in; saving it adds the records and completes the task in one step, and a repeating task schedules its next date. A havan on a day when Agni is not on earth gets a warning with the next good day. |
 | Reports and dashboard | Dashboard: herd size, today's and this month's milk, pregnancies, vaccines due, pending orders, monthly sales, a 14-day milk chart, upcoming calvings and recent health events. Reports for any date range: herd summary, milk by month and by animal, costs, feed used, shop sales, breeding; each downloadable as CSV. |
 
 Any record form can be filled for several animals at once (for example a herd-wide
@@ -110,17 +111,26 @@ vaccination or feeding) by selecting more than one animal.
 ### Data model
 `users`, `cattle` (with `dam_id` pointing to the mother), `health_records`,
 `vaccinations`, `feedings`, `breedings`, `milk_records`, `products`, `orders`,
-`order_items`. See `schema.sql`. Deleting an animal deletes its records.
+`order_items`, `tasks` and `task_animals` (which animals a task is for). See
+`schema.sql`. Deleting an animal deletes its records and takes it off its tasks.
 
 ### About the calendar
 Months are amanta (new moon to new moon), as used in Maharashtra, Gujarat and
-Karnataka. Positions of the sun and moon are calculated in `panchang.py` from
-standard astronomical formulas (Meeus) with the Lahiri ayanamsa, and each day is
-read at 6:00 AM IST as a stand-in for sunrise. It was checked against known dates:
-adhika Shravana 2023, adhika Jyeshtha 2026, Pausha Shukla Dwadashi with Mrigashira
-on 22 Jan 2024, Phalguna Purnima on 25 Mar 2024, Ashvin Amavasya on 21 Oct 2025.
-On days when a tithi or nakshatra changes close to sunrise it can differ by a day
-from a printed panchang for your town.
+Karnataka. `panchang.py` gets the sun and moon positions, new moons, precession and
+sunrise from the PyEphem (`ephem`) astronomy library, and uses the Lahiri ayanamsa
+from its official definition (23°15′00.658″ on 21 March 1956, plus precession).
+Each day is read at sunrise in Sangli; to use another town set `FARM_LOCATION`,
+`FARM_LAT`, `FARM_LON` and `FARM_ELEVATION` in `.env` (and on Vercel). The tests
+check it against known dates: adhika Shravana 2023, adhika Jyeshtha 2026, Pausha
+Shukla Dwadashi with Mrigashira on 22 Jan 2024, Phalguna Purnima on 25 Mar 2024,
+Ashvin Amavasya on 21 Oct 2025 and Mauni Amavasya on 21 Jan 2023. On days when a
+tithi or nakshatra changes close to sunrise, check a local panchang for muhurta timing.
+
+**Agnivas** follows the rule सैका तिथिर्वारयुता कृताप्ता…: (tithi counted from Shukla
+Pratipada + 1 + weekday counted from Sunday) divided by 4; a remainder of 3 or 0 puts
+Agni on earth (Prithvi, good for havan), 1 in the sky (Akasha) and 2 in the
+underworld (Patala). **Agni Nakshatra** (Kathiri) is the period when the sun moves
+from Bharani pada 3 to the end of Rohini pada 1, about 4 to 28 May.
 
 ## Files
 - `app.py`: all pages and logic
@@ -134,6 +144,6 @@ from a printed panchang for your town.
 - `templates/`: HTML pages, `static/style.css`: styling
 
 ## Ideas for a next version
-Local sunrise by town for the calendar; SMS or WhatsApp reminders for vaccines;
+SMS or WhatsApp reminders for tasks and vaccines;
 online payment (UPI) in the shop; Marathi and Hindi interface; daily milk
-collection entry for the whole herd on one screen; hosting online.
+collection entry for the whole herd on one screen.

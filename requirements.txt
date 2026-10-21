@@ -5,3 +5,4 @@ python-dotenv>=1.0
 alembic>=1.13
 SQLAlchemy>=2.0
 tzdata  # time zone data; Windows has none built in
+ephem>=4.1  # sun, moon and sunrise for the Hindu calendar

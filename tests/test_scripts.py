@@ -18,9 +18,12 @@ sys.path.insert(0, ROOT)
 import migrate_sqlite_to_postgres as mig  # noqa: E402
 
 
-def _migration_module():
-    path = os.path.join(ROOT, "migrations", "versions", "0001_initial_schema.py")
-    spec = importlib.util.spec_from_file_location("m0001", path)
+MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py"]  # in order
+
+
+def _migration_module(name="0001_initial_schema.py"):
+    path = os.path.join(ROOT, "migrations", "versions", name)
+    spec = importlib.util.spec_from_file_location(name[:-3], path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -34,7 +37,12 @@ def test_schema_sql_matches_migration():
     text = open(os.path.join(ROOT, "schema.sql"), encoding="utf-8").read()
     text = "\n".join(line for line in text.splitlines() if not line.startswith("--"))
     from_file = [_norm(s) for s in text.split(";") if s.strip()]
-    assert from_file == [_norm(s) for s in _migration_module().statements()]
+    assert from_file == [_norm(s) for name in MIGRATIONS for s in _migration_module(name).statements()]
+
+
+def test_every_migration_is_listed():
+    found = sorted(f for f in os.listdir(os.path.join(ROOT, "migrations", "versions")) if f.endswith(".py"))
+    assert found == MIGRATIONS
 
 
 @pytest.fixture
@@ -125,7 +133,7 @@ def test_alembic_downgrade_and_upgrade(empty_db):
     alembic("downgrade", "base")
     assert tables() == {"alembic_version"}
     alembic("upgrade", "head")
-    assert tables() == {"alembic_version", *mig.TABLES}
+    assert tables() == {"alembic_version", *mig.TABLES, "tasks", "task_animals"}
     with psycopg.connect(empty_db.replace("-pooler", "", 1), prepare_threshold=None) as c:
         assert c.execute("SHOW timezone").fetchone()[0] == "Asia/Kolkata"  # database default, direct connection
 

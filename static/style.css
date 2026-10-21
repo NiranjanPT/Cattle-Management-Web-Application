@@ -101,6 +101,16 @@ dl.facts dd { margin: 0; }
 .cal .nk { color: var(--accent); }
 .cal .ev { color: var(--danger); margin-top: 2px; }
 .cal .blank { background: transparent; border: none; }
+/* Agni: Agnivas on each day, Agni Nakshatra period */
+.agni { font-size: 12px; }
+.agni.good { color: var(--accent); }
+.agni.bad { color: var(--warn); }
+.cal .day.agninak { border-color: var(--warn); }
+.cal .day .add { float: right; text-decoration: none; font-weight: 400; }
+/* tasks */
+.task-done td { color: var(--muted); }
+td.acts { white-space: nowrap; text-align: right; }
+td.acts form { display: inline; }
 /* bar chart */
 .bars { display: flex; align-items: flex-end; gap: 4px; height: 160px; padding-top: 18px; }
 .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; position: relative; }

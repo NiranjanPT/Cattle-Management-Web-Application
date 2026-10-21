@@ -3,9 +3,13 @@
 <div class="row spread">
   <h1>Farm dashboard</h1>
   <a class="card small" style="margin:0;padding:8px 12px;text-decoration:none;color:inherit" href="{{ url_for('calendar') }}">
-    🗓 {{ today.strftime('%d %b %Y') }} · {{ 'Adhika ' if pmonth and pmonth.adhika }}{{ pmonth.name if pmonth }} {{ pt.paksha }} {{ pt.tithi }} · <b>{{ pt.nakshatra }}</b> nakshatra</a>
+    🗓 {{ today.strftime('%d %b %Y') }} · {{ 'Adhika ' if pmonth and pmonth.adhika }}{{ pmonth.name if pmonth }} {{ pt.paksha }} {{ pt.tithi }} · <b>{{ pt.nakshatra }}</b> nakshatra
+    · <span class="agni {{ 'good' if pt.agni.good_for_havan else 'bad' }}" title="{{ pt.agni.note }}">🔥 Agni: {{ pt.agni.place }}</span>{% if pt.agni_nakshatra %} · <span class="agni bad">Agni Nakshatra</span>{% endif %}</a>
 </div>
+{% set overdue = task_rows|selectattr('due_date', 'lt', today)|list %}
+{% set due_today = task_rows|selectattr('due_date', 'eq', today)|list %}
 <div class="tiles">
+  <div class="tile"><div class="k">Tasks today</div><div class="v">{{ due_today|length }}</div><div class="s">{% if overdue %}<span class="badge bad">{{ overdue|length }} overdue</span> {% endif %}<a href="{{ url_for('tasks') }}">all tasks</a></div></div>
   <div class="tile"><div class="k">Active cattle</div><div class="v">{{ stats.active }}</div><div class="s">{{ stats.female }} female</div></div>
   <div class="tile"><div class="k">Milk today</div><div class="v">{{ stats.milk_today|num }} L</div><div class="s">{{ stats.milk_month|num }} L this month</div></div>
   <div class="tile"><div class="k">Pregnant</div><div class="v">{{ stats.pregnant }}</div><div class="s">confirmed, not yet calved</div></div>
@@ -14,6 +18,11 @@
   <div class="tile"><div class="k">Shop sales</div><div class="v">{{ stats.sales_month|money }}</div><div class="s">this month</div></div>
 </div>
 <div class="grid">
+  <div class="card">
+    <div class="row spread"><h2>Tasks this week</h2><a class="btn sm" href="{{ url_for('task_form', back=request.path) }}">+ Task</a></div>
+    {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
+    {% else %}<p class="muted">Nothing scheduled for the next 7 days.</p>{% endif %}
+  </div>
   <div class="card">
     <h2>Milk collected, last 14 days (litres)</h2>
     <div class="bars" role="img" aria-label="Daily milk in litres for the last 14 days">

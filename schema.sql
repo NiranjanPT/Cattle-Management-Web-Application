@@ -5,6 +5,7 @@
 -- (tests/test_scripts.py checks the two stay identical). Later schema changes go in
 -- new Alembic migrations; update this file to match.
 --
+-- Tables from migration 0002 (tasks) follow the indexes.
 -- Migration 0001 also sets the database's default time zone to Asia/Kolkata.
 
 CREATE TABLE users (
@@ -140,3 +141,32 @@ CREATE INDEX idx_orders_status ON orders (status);
 CREATE INDEX idx_orders_user ON orders (user_id);
 CREATE INDEX idx_order_items_order ON order_items (order_id);
 CREATE INDEX idx_cattle_dam ON cattle (dam_id);
+
+-- Migration 0002: scheduled tasks
+
+CREATE TABLE tasks (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('health', 'vaccinations', 'feeding', 'breeding', 'milk', 'havan', 'other')),
+    item TEXT,
+    due_date DATE NOT NULL,
+    repeat TEXT NOT NULL DEFAULT 'none' CHECK (repeat IN ('none', 'daily', 'weekly', 'monthly', 'yearly')),
+    all_animals INTEGER NOT NULL DEFAULT 0,
+    assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'Open' CHECK (status IN ('Open', 'Done')),
+    done_at TIMESTAMPTZ,
+    done_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE task_animals (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    cattle_id INTEGER NOT NULL REFERENCES cattle(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, cattle_id)
+);
+
+CREATE INDEX idx_tasks_status_due ON tasks (status, due_date);
+CREATE INDEX idx_tasks_assigned ON tasks (assigned_to);
+CREATE INDEX idx_task_animals_cattle ON task_animals (cattle_id);

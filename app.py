@@ -5,6 +5,7 @@ import io
 import os
 import re
 import secrets
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import wraps
@@ -142,7 +143,12 @@ def csrf_protect():
 @app.context_processor
 def inject():
     cart = session.get("cart", {})
-    return {"user": current_user(), "csrf_token": session.get("csrf", ""),
+    user = current_user()
+    tasks_due = 0  # open tasks due today or overdue, shown next to "Tasks" in the menu
+    if user and user["role"] in FARM:
+        tasks_due = q("SELECT COUNT(*) AS n FROM tasks WHERE status='Open' AND due_date<=%s",
+                      (date.today(),), one=True)["n"]
+    return {"user": user, "csrf_token": session.get("csrf", ""), "tasks_due": tasks_due,
             "cart_count": sum(cart.values()) if cart else 0, "today": date.today()}
 
 
@@ -386,8 +392,10 @@ def cattle_profile(cid):
     calves = q("SELECT id, tag_no, name, dob FROM cattle WHERE dam_id=%s ORDER BY dob", (cid,))
     milk30 = q("SELECT COALESCE(SUM(litres),0) t, COUNT(DISTINCT date) d FROM milk_records"
                " WHERE cattle_id=%s AND date>=%s", (cid, (date.today() - timedelta(days=30)).isoformat()), one=True)
+    task_rows = _task_rows("t.status='Open' AND (t.all_animals=1 OR EXISTS (SELECT 1 FROM task_animals x"
+                           " WHERE x.task_id=t.id AND x.cattle_id=%s))", (cid,))
     return render_template("cattle_profile.html", c=c, data=data, calves=calves, milk30=milk30,
-                           records=RECORDS)
+                           records=RECORDS, task_rows=task_rows)
 
 
 @app.route("/cattle/<int:cid>/delete", methods=["POST"])
@@ -496,6 +504,9 @@ def record_form(kind, rid=None):
     r = q(f"SELECT * FROM {cfg['table']} WHERE id=%s", (rid,), one=True) if rid else None
     if rid and not r:
         abort(404)
+    # opened from a task: pre-fill it, and complete the task when the records are saved
+    task_id = None if r else request.values.get("task", type=int)
+    task = (_task_rows("t.id=%s AND t.status='Open' AND t.kind=%s", (task_id, kind)) or [None])[0] if task_id else None
     if request.method == "POST":
         f = request.form
         cattle_ids = f.getlist("cattle_id") if not r else [f.get("cattle_id")]
@@ -505,29 +516,39 @@ def record_form(kind, rid=None):
         if not cattle_ids or missing:
             flash("Please choose an animal and fill the required fields.", "error")
         else:
-            for cid in cattle_ids:
-                row = dict(vals)
-                if kind == "breeding" and not row["expected_calving"]:
-                    species = q("SELECT species FROM cattle WHERE id=%s", (cid,), one=True)
-                    days = GESTATION_DAYS.get(species["species"] if species else "", 283)
-                    row["expected_calving"] = (date.fromisoformat(row["date"]) + timedelta(days=days)).isoformat()
-                row["cattle_id"] = cid
-                cols = list(row)
-                if r:
-                    ex(f"UPDATE {cfg['table']} SET {', '.join(k + '=%s' for k in cols)} WHERE id=%s",
-                       [row[k] for k in cols] + [rid])
-                else:
-                    ex(f"INSERT INTO {cfg['table']} ({', '.join(cols)}) VALUES ({', '.join('%s' for _ in cols)})",
-                       [row[k] for k in cols])
+            nxt = done = None
+            with get_db().transaction():  # all the records and the task, or nothing
+                for cid in cattle_ids:
+                    row = dict(vals)
+                    if kind == "breeding" and not row["expected_calving"]:
+                        species = q("SELECT species FROM cattle WHERE id=%s", (cid,), one=True)
+                        days = GESTATION_DAYS.get(species["species"] if species else "", 283)
+                        row["expected_calving"] = (date.fromisoformat(row["date"]) + timedelta(days=days)).isoformat()
+                    row["cattle_id"] = cid
+                    cols = list(row)
+                    if r:
+                        ex(f"UPDATE {cfg['table']} SET {', '.join(k + '=%s' for k in cols)} WHERE id=%s",
+                           [row[k] for k in cols] + [rid])
+                    else:
+                        ex(f"INSERT INTO {cfg['table']} ({', '.join(cols)}) VALUES ({', '.join('%s' for _ in cols)})",
+                           [row[k] for k in cols])
+                if task:
+                    done = q("SELECT * FROM tasks WHERE id=%s AND status='Open' FOR UPDATE", (task["id"],), one=True)
+                    if done:
+                        nxt = complete_task(done)
             flash(f"Saved {len(cattle_ids)} {cfg['one']}{'s' if len(cattle_ids) > 1 else ''}.", "ok")
-            back = f.get("back")
-            return redirect(back if back and back.startswith("/") and not back.startswith("//")
-                            else url_for("records", kind=kind))
+            if done:
+                flash(_done_message(done, nxt), "ok")
+            return redirect(_safe_back(url_for("records", kind=kind)))
     animals = q("SELECT id, tag_no, name, sex FROM cattle WHERE status='Active' OR id=%s ORDER BY tag_no",
                 (r["cattle_id"] if r else 0,))
-    pre = request.args.get("cattle_id", type=int)
-    return render_template("record_form.html", kind=kind, cfg=cfg, r=r, animals=animals, pre=pre,
-                           back=request.args.get("back", ""))
+    if task:
+        pre_ids = {a["id"] for a in animals} if task["all_animals"] else set(task["cattle_ids"])
+        prefill = {TASK_ITEM_FIELD[kind]: task["item"]} if task["item"] else {}
+    else:
+        pre_ids, prefill = {request.args.get("cattle_id", type=int)}, {}
+    return render_template("record_form.html", kind=kind, cfg=cfg, r=r, animals=animals, pre_ids=pre_ids,
+                           prefill=prefill, task=task, back=request.args.get("back", ""))
 
 
 @app.route("/records/<kind>/<int:rid>/delete", methods=["POST"])
@@ -537,6 +558,167 @@ def record_delete(kind, rid):
     ex(f"DELETE FROM {cfg['table']} WHERE id=%s", (rid,))
     flash("Record deleted.", "ok")
     return redirect(request.referrer or url_for("records", kind=kind))
+
+
+# ---------------------------------------------------------------- tasks
+
+# A task's kind is a record module (completed by saving that record) or havan / other (marked done directly).
+TASK_KINDS = {"vaccinations": "Vaccination", "health": "Health / deworming", "feeding": "Feeding",
+              "breeding": "Breeding / AI", "milk": "Milking", "havan": "Havan / puja", "other": "Other"}
+REPEATS = {"none": "Does not repeat", "daily": "Every day", "weekly": "Every week",
+           "monthly": "Every month", "yearly": "Every year"}
+# the record-form field a task's "item" fills in, e.g. which vaccine
+TASK_ITEM_FIELD = {"vaccinations": "vaccine", "health": "kind", "feeding": "feed_type",
+                   "breeding": "method", "milk": "session"}
+
+
+def _step(d, repeat):
+    if repeat == "daily":
+        return d + timedelta(days=1)
+    if repeat == "weekly":
+        return d + timedelta(weeks=1)
+    y, m = divmod(d.month - 1 + (1 if repeat == "monthly" else 12), 12)
+    y, m = d.year + y, m + 1
+    return date(y, m, min(d.day, monthrange(y, m)[1]))  # 31 Jan + 1 month = 28/29 Feb
+
+
+def next_occurrence(due, repeat, after):
+    """The next date of a repeating task: at least one step past `due`, and after `after` (today)."""
+    if repeat not in REPEATS or repeat == "none":
+        return None
+    d = _step(due, repeat)
+    while d <= after:  # a task done late does not leave a trail of overdue copies
+        d = _step(d, repeat)
+    return d
+
+
+def _task_rows(where="TRUE", args=(), order="t.due_date, t.id"):
+    """Tasks with their assignee and animals (tags as text, ids as a list)."""
+    return q("SELECT t.*, u.full_name AS assignee,"
+             " COALESCE(string_agg(c.tag_no, ', ' ORDER BY c.tag_no), '') AS tags,"
+             " array_remove(array_agg(c.id ORDER BY c.tag_no), NULL) AS cattle_ids"
+             " FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to"
+             " LEFT JOIN task_animals ta ON ta.task_id=t.id LEFT JOIN cattle c ON c.id=ta.cattle_id"
+             f" WHERE {where} GROUP BY t.id, u.full_name ORDER BY {order}", args)
+
+
+def complete_task(t):
+    """Mark task t done and schedule its next repeat. Call inside a transaction with t locked."""
+    ex("UPDATE tasks SET status='Done', done_at=now(), done_by=%s WHERE id=%s", (current_user()["id"], t["id"]))
+    nxt = next_occurrence(t["due_date"], t["repeat"], date.today())
+    if nxt:
+        new_id = ex("INSERT INTO tasks (title, kind, item, due_date, repeat, all_animals, assigned_to, notes,"
+                    " created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (t["title"], t["kind"], t["item"], nxt, t["repeat"], t["all_animals"], t["assigned_to"],
+                     t["notes"], t["created_by"]))
+        # task_animals has no id column, so not ex() (which adds RETURNING id)
+        get_db().execute("INSERT INTO task_animals (task_id, cattle_id)"
+                         " SELECT %s, cattle_id FROM task_animals WHERE task_id=%s", (new_id, t["id"]))
+    return nxt
+
+
+def _done_message(t, nxt):
+    return f"Task done: {t['title']}." + (f" Next one scheduled for {nxt:%d %b %Y}." if nxt else "")
+
+
+def next_havan_day(d, within=30):
+    """The first day after d with Agni on earth (Prithvi), within `within` days."""
+    for i in range(1, within + 1):
+        if panchang.day_info(d + timedelta(days=i))["agni"]["good_for_havan"]:
+            return d + timedelta(days=i)
+    return None
+
+
+def _safe_back(default):
+    back = request.values.get("back", "")
+    return back if back.startswith("/") and not back.startswith("//") else default
+
+
+app.jinja_env.globals.update(TASK_KINDS=TASK_KINDS, REPEATS=REPEATS,
+                             agni_on=lambda d: panchang.day_info(d)["agni"])
+
+
+@app.route("/tasks")
+@login_required(*FARM)
+def tasks():
+    mine = request.args.get("mine") == "1"
+    extra, args = (" AND t.assigned_to=%s", (current_user()["id"],)) if mine else ("", ())
+    return render_template("tasks.html", mine=mine,
+                           open_rows=_task_rows("t.status='Open'" + extra, args),
+                           done_rows=_task_rows("t.status='Done'" + extra, args, order="t.done_at DESC LIMIT 20"))
+
+
+@app.route("/tasks/new", methods=["GET", "POST"])
+@app.route("/tasks/<int:tid>/edit", methods=["GET", "POST"])
+@login_required(*FARM)
+def task_form(tid=None):
+    t = (_task_rows("t.id=%s", (tid,)) or [None])[0] if tid else None
+    if tid and not t:
+        abort(404)
+    staff = q("SELECT id, full_name FROM users WHERE role IN ('admin', 'staff') AND active=1 ORDER BY full_name")
+    if request.method == "POST":
+        f = request.form
+        kind = f.get("kind") if f.get("kind") in TASK_KINDS else "other"
+        due = parse_date(f.get("due_date"))
+        repeat = f.get("repeat") if f.get("repeat") in REPEATS else "none"
+        item = (f.get("item") or "").strip() or None
+        title = (f.get("title") or "").strip() or TASK_KINDS[kind] + (f": {item}" if item else "")
+        all_animals = 1 if f.get("all_animals") else 0
+        wanted = [] if all_animals else [int(x) for x in f.getlist("cattle_id") if x.isdigit()]
+        cattle_ids = [r["id"] for r in q("SELECT id FROM cattle WHERE id = ANY(%s) ORDER BY id", (wanted,))]
+        assigned = f.get("assigned_to", type=int)
+        assigned = assigned if assigned in {s["id"] for s in staff} else None
+        if not due:
+            flash("Please choose a date for the task.", "error")
+        else:
+            vals = (title, kind, item, due, repeat, all_animals, assigned, f.get("notes") or None)
+            with get_db().transaction():
+                if t:
+                    ex("UPDATE tasks SET title=%s, kind=%s, item=%s, due_date=%s, repeat=%s, all_animals=%s,"
+                       " assigned_to=%s, notes=%s WHERE id=%s", vals + (tid,))
+                    get_db().execute("DELETE FROM task_animals WHERE task_id=%s", (tid,))
+                else:
+                    tid = ex("INSERT INTO tasks (title, kind, item, due_date, repeat, all_animals, assigned_to,"
+                             " notes, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                             vals + (current_user()["id"],))
+                for cid in cattle_ids:
+                    get_db().execute("INSERT INTO task_animals (task_id, cattle_id) VALUES (%s, %s)", (tid, cid))
+            flash(f"Task saved: {title}, {due:%d %b %Y}.", "ok")
+            agni = panchang.day_info(due)["agni"]
+            if kind == "havan" and not agni["good_for_havan"]:
+                good = next_havan_day(due)
+                flash(f"{due:%d %b}: {agni['note']}."
+                      + (f" Next day with Agni on earth: {good:%a %d %b}." if good else ""), "error")
+            return redirect(_safe_back(url_for("tasks")))
+    animals = q("SELECT id, tag_no, name FROM cattle WHERE status='Active'"
+                " OR id = ANY(%s) ORDER BY tag_no", (t["cattle_ids"] if t else [],))
+    items = {k: next((opts for name, _, _, opts in RECORDS[k]["fields"] if name == field), [])
+             for k, field in TASK_ITEM_FIELD.items()}
+    pre_date = parse_date(request.args.get("date")) or date.today()
+    pre_cattle = request.args.get("cattle_id", type=int)
+    return render_template("task_form.html", t=t, animals=animals, staff=staff, items=items,
+                           pre_date=pre_date, pre_cattle=pre_cattle, back=request.args.get("back", ""))
+
+
+@app.route("/tasks/<int:tid>/done", methods=["POST"])
+@login_required(*FARM)
+def task_done(tid):
+    t = q("SELECT * FROM tasks WHERE id=%s", (tid,), one=True) or abort(404)
+    if t["kind"] in RECORDS:  # completed by saving the record, in the record form
+        return redirect(url_for("record_form", kind=t["kind"], task=tid, back=_safe_back(url_for("tasks"))))
+    with get_db().transaction():
+        t = q("SELECT * FROM tasks WHERE id=%s FOR UPDATE", (tid,), one=True)
+        if t["status"] == "Open":
+            flash(_done_message(t, complete_task(t)), "ok")
+    return redirect(_safe_back(url_for("tasks")))
+
+
+@app.route("/tasks/<int:tid>/delete", methods=["POST"])
+@login_required(*FARM)
+def task_delete(tid):
+    ex("DELETE FROM tasks WHERE id=%s", (tid,))
+    flash("Task deleted.", "ok")
+    return redirect(_safe_back(url_for("tasks")))
 
 
 # ---------------------------------------------------------------- shop
@@ -749,6 +931,10 @@ def calendar():
                    " WHERE b.actual_calving IS NULL AND b.pregnancy<>'Not pregnant'"
                    " AND b.expected_calving BETWEEN %s AND %s", (lo, hi)):
             events.setdefault(r["d"].isoformat(), []).append(f"Calving expected: {r['tag_no']}")
+        for t in _task_rows("t.due_date BETWEEN %s AND %s", (lo, hi)):
+            who = "whole herd" if t["all_animals"] else t["tags"]
+            events.setdefault(t["due_date"].isoformat(), []).append(
+                ("✓ " if t["status"] == "Done" else "Task: ") + t["title"] + (f" ({who})" if who else ""))
     # Shaka and (Chaitradi) Vikram Samvat years both begin at Chaitra
     overview = []
     for m in months:
@@ -761,7 +947,7 @@ def calendar():
         overview.append({"first": first, "last": ds[-1], "purnima": purnima})
     return render_template("calendar.html", months=months, overview=overview, sel=sel, month=month, days=days, year=year,
                            shaka=year - 78, vikram=year + 57, events=events, nakshatras=panchang.NAKSHATRAS,
-                           lead_blanks=days[0]["date"].weekday() if days else 0)
+                           lead_blanks=days[0]["date"].weekday() if days else 0, location=panchang.LOCATION)
 
 
 @app.route("/calendar/nakshatras")
@@ -811,9 +997,10 @@ def dashboard():
                                             " GROUP BY date", (days[0],))}  # keyed by date objects
     milk = [{"d": d, "l": by_day.get(d, 0)} for d in days]
     m = panchang.month_of(t)
+    task_rows = _task_rows("t.status='Open' AND t.due_date<=%s", (t + timedelta(days=7),))
     return render_template("dashboard.html", stats=stats, vacc_due=vacc_due, calvings=calvings,
                            recent_health=recent_health, milk=milk, milk_max=max([x["l"] for x in milk] + [1]),
-                           pt=panchang.day_info(t), pmonth=m)
+                           pt=panchang.day_info(t), pmonth=m, task_rows=task_rows)
 
 
 def _report_data(d_from, d_to):

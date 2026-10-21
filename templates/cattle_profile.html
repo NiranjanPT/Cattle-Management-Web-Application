@@ -29,6 +29,13 @@
   {% if c.notes %}<p class="full" style="flex-basis:100%">{{ c.notes }}</p>{% endif %}
 </div>
 <div class="grid">
+  <div class="card wide">
+    <div class="row spread"><h2>Tasks</h2>
+      <span class="no-print"><a class="btn sm" href="{{ url_for('task_form', cattle_id=c.id, back=request.path) }}">+ Task</a>
+      <a class="small" href="{{ url_for('tasks') }}">All tasks</a></span></div>
+    {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
+    {% else %}<p class="muted small">No open tasks for this animal.</p>{% endif %}
+  </div>
 {% for kind, cfg in records.items() %}
   {% if kind != 'milk' or c.sex == 'Female' %}
   <div class="card">

@@ -1,16 +1,28 @@
-"""Hindu lunar calendar (amanta, Chaitra to Phalguna) with tithi and nakshatra.
+"""Hindu lunar calendar (amanta, Chaitra to Phalguna) with tithi, nakshatra and Agni.
 
-Positions use truncated formulas from Jean Meeus, "Astronomical Algorithms"
-(sun ~0.01 deg, moon ~0.1 deg) with the Lahiri ayanamsa, which is enough to
-name the tithi and nakshatra of a day. Values are taken at 6:00 AM IST as a
-stand-in for local sunrise, so a day where a tithi or nakshatra changes near
-sunrise can differ from a printed panchang.
+Astronomy comes from the `ephem` library (PyEphem): apparent sun and moon positions,
+new moons, precession and local sunrise. Each civil day's panchang is read at sunrise
+at the farm (Sangli by default; set FARM_LOCATION, FARM_LAT, FARM_LON and
+FARM_ELEVATION to change it). Sidereal positions use the Lahiri (Chitrapaksha)
+ayanamsa from its official definition: 23 deg 15' 00.658" on 21 March 1956, plus
+precession since then as computed by ephem.
 """
 import math
+import os
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
+import ephem
+
 IST = timezone(timedelta(hours=5, minutes=30))
+
+LOCATION = os.environ.get("FARM_LOCATION", "Sangli")
+LAT = os.environ.get("FARM_LAT", "16.8524")
+LON = os.environ.get("FARM_LON", "74.5815")
+ELEVATION = float(os.environ.get("FARM_ELEVATION", "549"))  # metres
+
+LAHIRI_1956 = 23 + 15 / 60 + 0.658 / 3600  # ayanamsa at the Lahiri epoch below
+LAHIRI_EPOCH = "1956/3/21"
 
 MONTHS = [
     ("Chaitra", "चैत्र"), ("Vaishakha", "वैशाख"), ("Jyeshtha", "ज्येष्ठ"),
@@ -60,94 +72,79 @@ NAKSHATRAS = [
     ("Revati", "रेवती", "Mercury", "Pushan", "Fish"),
 ]
 NAK_SPAN = 360 / 27
+PADA_SPAN = NAK_SPAN / 4
 
-# Moon longitude terms (Meeus table 47.A): D, M, M', F, coefficient in 1e-6 deg
-_MOON_TERMS = [
-    (0, 0, 1, 0, 6288774), (2, 0, -1, 0, 1274027), (2, 0, 0, 0, 658314),
-    (0, 0, 2, 0, 213618), (0, 1, 0, 0, -185116), (0, 0, 0, 2, -114332),
-    (2, 0, -2, 0, 58793), (2, -1, -1, 0, 57066), (2, 0, 1, 0, 53322),
-    (2, -1, 0, 0, 45758), (0, 1, -1, 0, -40923), (1, 0, 0, 0, -34720),
-    (0, 1, 1, 0, -30383), (2, 0, 0, -2, 15327), (0, 0, 1, 2, -12528),
-    (0, 0, 1, -2, 10980), (4, 0, -1, 0, 10675), (0, 0, 3, 0, 10034),
-    (4, 0, -2, 0, 8548), (2, 1, -1, 0, -7888), (2, 1, 0, 0, -6766),
-    (1, 0, -1, 0, -5163), (1, 1, 0, 0, 4987), (2, -1, 1, 0, 4036),
-    (2, 0, 2, 0, 3994), (4, 0, 0, 0, 3861), (2, 0, -3, 0, 3665),
-    (0, 1, -2, 0, -2689), (2, 0, -1, 2, -2602), (2, -1, -2, 0, 2390),
-    (1, 0, 1, 0, -2348), (2, -2, 0, 0, 2236), (0, 1, 2, 0, -2120),
-    (0, 2, 0, 0, -2069), (2, -2, -1, 0, 2048), (2, 0, 1, -2, -1773),
-    (2, 0, 0, 2, -1595), (4, -1, -1, 0, 1215), (0, 0, 2, 2, -1110),
-]
+# Agnivas: सैका तिथिर्वारयुता कृताप्ता शेषे गुणेऽभ्रे भुवि वह्निवासः ।
+#          सौख्याय होमे शशियुग्मशेषे प्राणार्थनाशौ दिवि भूतले च ॥
+# (tithi from Shukla Pratipada + 1 + weekday from Sunday) mod 4:
+# 3 or 0 -> earth (good for homa), 1 -> sky (harm to life), 2 -> underworld (loss of wealth).
+AGNIVAS = {
+    0: ("Prithvi", "पृथ्वी", True, "Agni on earth: good for havan"),
+    3: ("Prithvi", "पृथ्वी", True, "Agni on earth: good for havan"),
+    1: ("Akasha", "आकाश", False, "Agni in the sky: havan not advised (prana-nasha)"),
+    2: ("Patala", "पाताल", False, "Agni in the underworld: havan not advised (artha-nasha)"),
+}
+# Agni Nakshatra (Kathiri): the sun from Bharani pada 3 to the end of Rohini pada 1.
+AGNI_NAKSHATRA = (1 * NAK_SPAN + 2 * PADA_SPAN, 3 * NAK_SPAN + 1 * PADA_SPAN)  # 20 deg to 43 deg 20'
 
 
-def _jd(dt):
-    """Julian Ephemeris Day for an aware datetime (adds ~69 s for TT-UTC)."""
-    ts = dt.astimezone(timezone.utc).timestamp() + 69
-    return ts / 86400 + 2440587.5
+def _ephem_date(dt):
+    return ephem.Date(dt.astimezone(timezone.utc).replace(tzinfo=None))
 
 
-def _sun_moon(jd):
-    T = (jd - 2451545.0) / 36525
-    r = math.radians
-    M = r(357.5291092 + 35999.0502909 * T)
-    L0 = 280.46646 + 36000.76983 * T
-    C = ((1.914602 - 0.004817 * T) * math.sin(M) + (0.019993 - 0.000101 * T) * math.sin(2 * M)
-         + 0.000289 * math.sin(3 * M))
-    omega = r(125.04 - 1934.136 * T)
-    sun = L0 + C - 0.00569 - 0.00478 * math.sin(omega)
-
-    Lp = 218.3164477 + 481267.88123421 * T
-    D = r(297.8501921 + 445267.1114034 * T)
-    Mp = r(134.9633964 + 477198.8675055 * T)
-    F = r(93.2720950 + 483202.0175233 * T)
-    E = 1 - 0.002516 * T
-    s = 0.0
-    for d, m, mp, f, c in _MOON_TERMS:
-        s += c * E ** abs(m) * math.sin(d * D + m * M + mp * Mp + f * F)
-    A1 = r(119.75 + 131.849 * T)
-    A2 = r(53.09 + 479264.290 * T)
-    s += 3958 * math.sin(A1) + 1962 * math.sin(r(Lp) - F) + 318 * math.sin(A2)
-    moon = Lp + s / 1e6 - 0.00478 * math.sin(omega)
-    return sun % 360, moon % 360
+def _from_ephem(d):
+    return ephem.Date(d).datetime().replace(tzinfo=timezone.utc)
 
 
-def ayanamsa(jd):
-    """Lahiri ayanamsa, linear approximation (23.853 deg at J2000)."""
-    return 23.853 + (jd - 2451545.0) / 365.25 * (50.2888 / 3600)
+def _longitude(body, when):
+    """Apparent geocentric ecliptic longitude (degrees, equinox of date)."""
+    body.compute(when, epoch=when)
+    eq = ephem.Equatorial(body.g_ra, body.g_dec, epoch=when)
+    return math.degrees(ephem.Ecliptic(eq).lon)
+
+
+def ayanamsa(when):
+    """Lahiri ayanamsa (degrees) at an ephem date or aware datetime."""
+    if isinstance(when, datetime):
+        when = _ephem_date(when)
+    start = ephem.Equatorial(ephem.Ecliptic(0, 0, epoch=LAHIRI_EPOCH), epoch=LAHIRI_EPOCH)
+    precession = math.degrees(ephem.Ecliptic(start, epoch=when).lon)
+    return LAHIRI_1956 + precession
 
 
 def positions(dt):
-    """Sidereal sun and moon longitude (degrees) and their elongation."""
-    jd = _jd(dt)
-    sun, moon = _sun_moon(jd)
-    ay = ayanamsa(jd)
+    """Sidereal sun and moon longitude (degrees) and their elongation, at an aware datetime."""
+    when = _ephem_date(dt)
+    sun = _longitude(ephem.Sun(), when)
+    moon = _longitude(ephem.Moon(), when)
+    ay = ayanamsa(when)
     return (sun - ay) % 360, (moon - ay) % 360, (moon - sun) % 360
-
-
-def _elong(dt):
-    return positions(dt)[2]
 
 
 def new_moons(start, end):
     """New-moon instants (aware UTC datetimes) between two dates."""
     out = []
-    t = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
-    stop = datetime(end.year, end.month, end.day, tzinfo=timezone.utc)
-    prev = _elong(t)
-    step = timedelta(hours=12)
-    while t < stop:
-        t2 = t + step
-        e2 = _elong(t2)
-        if e2 < prev:  # wrapped from ~360 to ~0: conjunction inside the step
-            lo, hi = t, t2
-            for _ in range(30):
-                mid = lo + (hi - lo) / 2
-                if _elong(mid) > 180:
-                    lo = mid
-                else:
-                    hi = mid
-            out.append(hi)
-        t, prev = t2, e2
-    return out
+    t = ephem.Date(datetime(start.year, start.month, start.day))
+    stop = ephem.Date(datetime(end.year, end.month, end.day))
+    while True:
+        t = ephem.next_new_moon(t)
+        if t >= stop:
+            return out
+        out.append(_from_ephem(t))
+
+
+@lru_cache(maxsize=4096)
+def sunrise(d):
+    """Sunrise (aware IST datetime) at the farm on civil date d: upper limb, standard refraction."""
+    obs = ephem.Observer()
+    obs.lat, obs.lon, obs.elevation = LAT, LON, ELEVATION
+    obs.pressure = 0          # refraction is in the horizon value instead
+    obs.horizon = "-0:34"
+    obs.date = _ephem_date(datetime(d.year, d.month, d.day, tzinfo=IST))
+    try:
+        return _from_ephem(obs.next_rising(ephem.Sun(), use_center=False)).astimezone(IST)
+    except (ephem.AlwaysUpError, ephem.NeverUpError):  # not possible in India; polar fallback
+        return datetime(d.year, d.month, d.day, 6, 0, tzinfo=IST)
 
 
 @lru_cache(maxsize=16)
@@ -187,10 +184,18 @@ def lunar_months(shaka_start_year):
     return result
 
 
+def agnivas(tithi_index, d):
+    """Where Agni resides on date d. tithi_index: 1 (Shukla Pratipada) to 30 (Amavasya)."""
+    vara = (d.weekday() + 1) % 7 + 1  # Sunday = 1 ... Saturday = 7
+    place, dev, good, note = AGNIVAS[(tithi_index + 1 + vara) % 4]
+    return {"place": place, "devanagari": dev, "good_for_havan": good, "note": note}
+
+
+@lru_cache(maxsize=4096)
 def day_info(d):
-    """Panchang values for a civil date, taken at 6:00 AM IST."""
-    dt = datetime(d.year, d.month, d.day, 6, 0, tzinfo=IST)
-    sun, moon, el = positions(dt)
+    """Panchang values for a civil date, taken at sunrise at the farm."""
+    rise = sunrise(d)
+    sun, moon, el = positions(rise)
     t = int(el // 12)  # 0..29
     paksha = "Shukla" if t < 15 else "Krishna"
     n = t % 15
@@ -201,29 +206,27 @@ def day_info(d):
     else:
         tithi = TITHIS[n]
     nk = int(moon // NAK_SPAN)
-    pada = int((moon % NAK_SPAN) // (NAK_SPAN / 4)) + 1
+    pada = int((moon % NAK_SPAN) // PADA_SPAN) + 1
     return {
-        "date": d, "weekday": WEEKDAYS[d.weekday()], "tithi": tithi,
-        "tithi_num": n + 1, "paksha": paksha,
+        "date": d, "sunrise": rise, "weekday": WEEKDAYS[d.weekday()], "tithi": tithi,
+        "tithi_num": n + 1, "tithi_index": t + 1, "paksha": paksha,
         "nakshatra": NAKSHATRAS[nk][0], "nakshatra_dev": NAKSHATRAS[nk][1],
         "nakshatra_index": nk, "pada": pada,
         "moon_rashi": RASHIS[int(moon // 30)], "sun_rashi": RASHIS[int(sun // 30)],
+        "agni": agnivas(t + 1, d),
+        "agni_nakshatra": AGNI_NAKSHATRA[0] <= sun < AGNI_NAKSHATRA[1],
     }
-
-
-def _six_am(d):
-    return datetime(d.year, d.month, d.day, 6, 0, tzinfo=IST)
 
 
 def year_for(d):
     """Gregorian year whose Chaitra starts the Hindu year containing date d."""
     months = lunar_months(d.year)
-    return d.year if _six_am(d) >= months[0]["start_dt"] else d.year - 1
+    return d.year if sunrise(d) >= months[0]["start_dt"] else d.year - 1
 
 
 def month_of(d):
-    """The lunar month containing date d (judged at 6:00 AM IST)."""
-    t = _six_am(d)
+    """The lunar month containing date d (judged at sunrise)."""
+    t = sunrise(d)
     for m in lunar_months(year_for(d)):
         if m["start_dt"] <= t < m["end_dt"]:
             return m
@@ -231,11 +234,11 @@ def month_of(d):
 
 
 def month_days(m):
-    """Civil dates whose 6:00 AM IST falls inside lunar month m."""
+    """Civil dates whose sunrise falls inside lunar month m."""
     d = m["start"]
     out = []
-    while _six_am(d) < m["end_dt"]:
-        if _six_am(d) >= m["start_dt"]:
+    while sunrise(d) < m["end_dt"]:
+        if sunrise(d) >= m["start_dt"]:
             out.append(d)
         d += timedelta(days=1)
     return out
