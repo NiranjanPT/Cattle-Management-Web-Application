@@ -38,6 +38,9 @@ def _env(name):
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # photo uploads
 app.secret_key = _env("SECRET_KEY")
+# Log out after an hour without a click. Every request restarts the hour, and Flask also refuses
+# a login cookie older than this, so a browser that restores its tabs cannot keep someone signed in.
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=1)
 
 # ---------------------------------------------------------------- database
 
@@ -134,6 +137,7 @@ FARM = ("admin", "staff")
 
 @app.before_request
 def csrf_protect():
+    session.permanent = True  # a cookie with an expiry date (see PERMANENT_SESSION_LIFETIME)
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
     if request.method == "POST" and request.form.get("csrf") != session["csrf"]:

@@ -1,7 +1,9 @@
 """End-to-end tests of the web app against the test database (see conftest.py)."""
 import re
+import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -96,6 +98,18 @@ def test_wrong_password_is_refused(fresh_db, farm):
     b.get("/login")
     r = b.post("/login", {"username": "admin", "password": "nope"})
     assert r.status_code == 200 and "Wrong username or password" in r.get_data(as_text=True)
+
+
+def test_idle_login_expires(fresh_db, farm, monkeypatch):
+    b = login(fresh_db, "admin", "admin123")
+    r = b.get("/dashboard")
+    expires = parsedate_to_datetime(re.search(r"Expires=([^;]+)", r.headers["Set-Cookie"]).group(1))
+    # an expiry date, so the browser drops it; renewed on every page, an hour ahead
+    assert timedelta(minutes=59) < expires - datetime.now(expires.tzinfo) <= timedelta(hours=1)
+    # the server also refuses a cookie older than the limit
+    monkeypatch.setitem(fresh_db.app.config, "PERMANENT_SESSION_LIFETIME", timedelta(seconds=1))
+    time.sleep(2.1)
+    assert "/login" in b.get("/dashboard").headers["Location"]
 
 
 def test_admin_sees_every_page(fresh_db, farm):
