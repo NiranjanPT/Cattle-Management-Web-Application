@@ -36,16 +36,13 @@ alembic upgrade head
 This also sets the database's time zone to Asia/Kolkata (order times and monthly totals
 are counted in farm time).
 
-### 4. Add data: move your old data **or** add demo data
-Do this **before** starting the app for the first time; the app creates an `admin`
-account on its first start, and the data move only fills empty tables.
+### 4. Optional: add demo data
+For a fresh database with sample animals, records, products and orders, run this
+**before** starting the app for the first time (the app creates an `admin` account on
+its first start, and the demo data needs an empty database):
 ```bash
-python migrate_sqlite_to_postgres.py        # copies everything from cattle.db, keeping ids
-# or, for a fresh start with sample data:
 python seed_demo.py
 ```
-The data move runs in one transaction, never changes `cattle.db`, and prints row counts
-for both databases at the end. Keep `cattle.db` as a backup.
 
 ### 5. Run
 ```bash
@@ -75,13 +72,12 @@ the SQL in its `upgrade()` and `downgrade()`, then `alembic upgrade head`. Updat
 
 ### Tests
 ```bash
-pip install -r requirements-dev.txt
 pytest
 ```
 The tests use only `DATABASE_URL_TEST` and refuse to start without it or if it points at
 the main database. They log in as admin, staff and customer, open every page, add an
 animal, a breeding record and a milk record for several animals, place and cancel a
-shop order, and check the data move and the demo seed. Over the internet to Neon they
+shop order, and check the database migrations and the demo seed. Over the internet to Neon they
 take a few minutes.
 
 ## Plan
@@ -146,7 +142,6 @@ from Bharani pada 3 to the end of Rohini pada 1, about 4 to 28 May.
 - `static/brand/`: the logo, from the company's PDF (full logo and the round mark, SVG and PNG)
 - `migrations/`, `alembic.ini`: database schema, managed by Alembic
 - `schema.sql`: readable copy of the full schema
-- `migrate_sqlite_to_postgres.py`: one-time move of the old `cattle.db` data
 - `seed_demo.py`: sample data
 - `tests/`: automated tests
 - `.env.example`: settings to copy into `.env`
