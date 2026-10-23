@@ -170,3 +170,12 @@ CREATE TABLE task_animals (
 CREATE INDEX idx_tasks_status_due ON tasks (status, due_date);
 CREATE INDEX idx_tasks_assigned ON tasks (assigned_to);
 CREATE INDEX idx_task_animals_cattle ON task_animals (cattle_id);
+
+-- Migration 0003: remembered translations of text people type
+CREATE TABLE text_translations (
+    source TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    translated TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (source, lang)
+);

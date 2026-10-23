@@ -113,10 +113,10 @@ def test_done_opens_record_form_and_completes_task(fresh_db, farm):
     assert r.status_code == 302 and f"/records/vaccinations/new?task={t['id']}" in r.headers["Location"]
 
     html = staff.get(f"/records/vaccinations/new?task={t['id']}").get_data(as_text=True)
-    assert "Completing task <b>FMD booster</b>" in html
+    assert "Completing task FMD booster" in html
     assert f'<option value="{farm["cow"]}" selected>' in html and f'<option value="{farm["buffalo"]}" selected>' in html
     assert f'<option value="{farm["bull"]}" >' in html
-    assert "<option selected>FMD (Foot and Mouth)</option>" in html
+    assert '<option value="FMD (Foot and Mouth)" selected>FMD (Foot and Mouth)</option>' in html
 
     r = staff.post("/records/vaccinations/new", {"task": str(t["id"]), "back": "/tasks",
                                                  "cattle_id": [str(farm["cow"]), str(farm["buffalo"])],
@@ -152,7 +152,7 @@ def test_whole_herd_prefills_all_animals(fresh_db, farm):
     html = staff.get(f"/records/health/new?task={t['id']}").get_data(as_text=True)
     for cid in (farm["cow"], farm["buffalo"], farm["bull"]):
         assert f'<option value="{cid}" selected>' in html
-    assert "<option selected>Deworming</option>" in html
+    assert '<option value="Deworming" selected>Deworming</option>' in html
 
 
 def test_task_of_other_kind_is_ignored_by_record_form(fresh_db, farm):

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Pure A2 milk from desi cows') }}{% endblock %}
+{% block head %}
+<meta name="description" content="{{ _('VrushaA2 Dairy Tech Pvt. Ltd.: A2 milk, ghee and dairy products from desi cows, delivered to your door.') }}">
+<meta property="og:title" content="{{ _(COMPANY) }}">
+<meta property="og:image" content="{{ url_for('static', filename='brand/logo-full.png', _external=True) }}">
+{% endblock %}
+{% block site_nav %}
+<a href="#about">{{ _('About us') }}</a>
+<a href="#products">{{ _('Products') }}</a>
+<a href="#order">{{ _('How to order') }}</a>
+<a href="#contact">{{ _('Contact') }}</a>
+{% endblock %}
+{% block main %}
+<main class="site">
+{% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="wrap"><div class="flash {{ cat }}">{{ msg }}</div></div>{% endfor %}
+
+<section class="hero"><div class="wrap hero-inner">
+  <img class="hero-logo" src="{{ url_for('static', filename='brand/logo-full.svg') }}" width="525" height="364"
+       alt="{{ _(COMPANY) }}: {{ _(TAGLINE) }}">
+  <div class="hero-text">
+    <p class="eyebrow">{{ _(COMPANY) }}</p>
+    <h1>{{ _(TAGLINE) }}</h1>
+    <p class="lead">{{ _('Pure A2 milk, ghee and dairy products from desi cows that we raise with care, the traditional way.') }}</p>
+    <div class="row">
+      <a class="btn lg" href="{{ url_for('shop') if user else url_for('register') }}">{{ _('Order fresh dairy') }}</a>
+      <a class="btn ghost lg" href="#products">{{ _('See our products') }}</a>
+    </div>
+  </div>
+</div></section>
+
+<section class="facts-band"><div class="wrap facts-row">
+  {% if stats.cattle %}<div><b>{{ stats.cattle }}</b><span>{{ _('desi cattle in our care') }}</span></div>{% endif %}
+  {% if stats.products %}<div><b>{{ stats.products }}</b><span>{{ _('dairy products') }}</span></div>{% endif %}
+  <div><b>A2</b><span>{{ _('milk from indigenous breeds') }}</span></div>
+  <div><b>₹</b><span>{{ _('pay on delivery') }}</span></div>
+</div></section>
+
+<section id="about" class="block"><div class="wrap">
+  <h2>{{ _('Our values') }}</h2>
+  <p class="lead">{{ _('VrushaA2 Dairy Tech brings the goodness of the Indian desi cow to your home. Our work rests on sanskar: caring for every animal, honest food and respect for tradition.') }}</p>
+  <div class="values">
+    <div class="value"><span class="ic">🐄</span><h3>{{ _('Desi cows') }}</h3>
+      <p>{{ _('Indigenous Indian breeds such as Gir and Khillar, known for their A2 milk.') }}</p></div>
+    <div class="value"><span class="ic">🌿</span><h3>{{ _('Natural feed and care') }}</h3>
+      <p>{{ _('Green fodder, clean water and regular check-ups and vaccinations, recorded for every animal.') }}</p></div>
+    <div class="value"><span class="ic">🥛</span><h3>{{ _('Fresh and clean') }}</h3>
+      <p>{{ _('Milked every morning and evening, handled hygienically and delivered fresh.') }}</p></div>
+    <div class="value"><span class="ic">🪔</span><h3>{{ _('Rooted in tradition') }}</h3>
+      <p>{{ _('We follow the Hindu calendar for gau seva and havan. From sanskar to prosperity.') }}</p></div>
+  </div>
+</div></section>
+
+<section id="products" class="block alt"><div class="wrap">
+  <h2>{{ _('Our products') }}</h2>
+  {% if products %}
+  <div class="products">
+  {% for p in products %}
+    <div class="card product">
+      <span class="badge">{{ _(p.category) }}</span>
+      <h3>{{ p.name|dv }}</h3>
+      {% if p.description %}<p class="small muted">{{ p.description|dv }}</p>{% endif %}
+      <div class="price">{{ p.price|money }} <span class="small muted">/ {{ p.unit|dv }}</span></div>
+      {% if p.stock > 0 %}<a class="btn" href="{{ url_for('shop') if user else url_for('login', next=url_for('shop')) }}">{{ _('Order') }}</a>
+      {% else %}<span class="badge bad">{{ _('Out of stock') }}</span>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">{{ _('Our product list is coming soon.') }}</p>{% endif %}
+</div></section>
+
+<section class="block panchang-band"><div class="wrap">
+  <h2>{{ _("Today's panchang") }}</h2>
+  <p class="today-line">
+    🗓 {{ today|fdate('%d %b %Y') }} ·
+    {% if pmonth %}{{ (_('Adhika') ~ ' ') if pmonth.adhika }}{{ pmonth.devanagari if lang == 'mr' else pmonth.name }}{% endif %}
+    {{ _(pt.paksha) }} {{ _(pt.tithi) }} ·
+    {{ _('Nakshatra') }}: <b>{{ pt.nakshatra_dev if lang == 'mr' else pt.nakshatra }}</b> ·
+    <span class="agni {{ 'good' if pt.agni.good_for_havan else 'bad' }}">🔥 {{ _(pt.agni.note) }}</span>
+  </p>
+  <p class="small muted">{{ _('Calculated for sunrise at {place}. Customers can see the full Hindu calendar after logging in.', place=_(location)) }}</p>
+</div></section>
+
+<section id="order" class="block"><div class="wrap">
+  <h2>{{ _('How to order') }}</h2>
+  <ol class="steps">
+    <li><b>{{ _('Create an account') }}</b><span>{{ _('Sign up with your name, phone and delivery address.') }}</span></li>
+    <li><b>{{ _('Choose products') }}</b><span>{{ _('Add milk, ghee, curd and more to your cart.') }}</span></li>
+    <li><b>{{ _('Pay on delivery') }}</b><span>{{ _('We confirm your order and deliver it to your door.') }}</span></li>
+  </ol>
+  <div class="row"><a class="btn lg" href="{{ url_for('shop') if user else url_for('register') }}">{{ _('Create an account') if not user else _('Go to the shop') }}</a>
+    {% if not user %}<a class="btn ghost lg" href="{{ url_for('login') }}">{{ _('Log in') }}</a>{% endif %}</div>
+</div></section>
+
+<section id="contact" class="block alt"><div class="wrap contact">
+  <div>
+    <h2>{{ _('Contact') }}</h2>
+    <dl class="facts">
+      <dt>{{ _('Address') }}</dt><dd>{{ contact.address or _(location) }}</dd>
+      {% if contact.phone %}<dt>{{ _('Phone') }}</dt><dd><a href="tel:{{ contact.phone|replace(' ', '') }}">{{ contact.phone }}</a></dd>{% endif %}
+      {% if contact.email %}<dt>{{ _('Email') }}</dt><dd><a href="mailto:{{ contact.email }}">{{ contact.email }}</a></dd>{% endif %}
+    </dl>
+  </div>
+  <img src="{{ url_for('static', filename='brand/logo-mark.svg') }}" alt="" width="160" height="160">
+</div></section>
+
+<footer class="site-foot"><div class="wrap row spread">
+  <span>© {{ today.year }} {{ _(COMPANY) }} · {{ _(TAGLINE) }}</span>
+  <span><a href="{{ url_for('login') }}">{{ _('Staff and customer login') }}</a></span>
+</div></footer>
+</main>
+{% endblock %}

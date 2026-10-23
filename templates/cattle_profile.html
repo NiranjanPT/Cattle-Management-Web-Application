@@ -1,52 +1,52 @@
 {% extends "base.html" %}{% block title %}{{ c.tag_no }}{% endblock %}
 {% block content %}
 <div class="row spread">
-  <h1>{{ c.tag_no }}{% if c.name %} · {{ c.name }}{% endif %} <span class="badge {{ 'ok' if c.status == 'Active' else 'bad' }}">{{ c.status }}</span></h1>
+  <h1>{{ c.tag_no }}{% if c.name %} · {{ c.name|dv }}{% endif %} <span class="badge {{ 'ok' if c.status == 'Active' else 'bad' }}">{{ _(c.status) }}</span></h1>
   <div class="row no-print">
-    <a class="btn ghost" href="{{ url_for('cattle_form', cid=c.id) }}">Edit</a>
-    <button class="ghost" onclick="window.print()">Print</button>
+    <a class="btn ghost" href="{{ url_for('cattle_form', cid=c.id) }}">{{ _('Edit') }}</a>
+    <button class="ghost" onclick="window.print()">{{ _('Print') }}</button>
     {% if user.role == 'admin' %}
-    <form method="post" action="{{ url_for('cattle_delete', cid=c.id) }}" class="inline" onsubmit="return confirm('Delete this animal and all its records?')">
-      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger">Delete</button></form>
+    <form method="post" action="{{ url_for('cattle_delete', cid=c.id) }}" class="inline" onsubmit="return confirm({{ _('Delete this animal and all its records?')|tojson|forceescape }})">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger">{{ _('Delete') }}</button></form>
     {% endif %}
   </div>
 </div>
 <div class="card profile-head">
-  {% if c.photo %}<img class="photo" src="{{ url_for('static', filename='uploads/' + c.photo) }}" alt="Photo of {{ c.tag_no }}">
+  {% if c.photo %}<img class="photo" src="{{ url_for('static', filename='uploads/' + c.photo) }}" alt="{{ _('Photo of {tag}', tag=c.tag_no) }}">
   {% else %}<div class="photo">🐄</div>{% endif %}
   <dl class="facts">
-    <dt>Type</dt><dd>{{ c.species }}, {{ c.sex }}</dd>
-    <dt>Breed</dt><dd>{{ c.breed or '—' }}</dd>
-    <dt>Born</dt><dd>{{ c.dob or '—' }} {% if c.dob %}<span class="muted">({{ age_text(c.dob) }})</span>{% endif %}</dd>
-    <dt>Colour</dt><dd>{{ c.color or '—' }}</dd>
-    <dt>Weight</dt><dd>{{ (c.weight_kg|num ~ ' kg') if c.weight_kg else '—' }}</dd>
-    <dt>Source</dt><dd>{{ c.source or '—' }}{% if c.purchase_date %}, {{ c.purchase_date }}{% endif %}{% if c.purchase_price %} for {{ c.purchase_price|money }}{% endif %}</dd>
-    <dt>Mother</dt><dd>{% if c.dam_id %}<a href="{{ url_for('cattle_profile', cid=c.dam_id) }}">{{ c.dam_tag }} {{ c.dam_name or '' }}</a>{% else %}—{% endif %}</dd>
-    <dt>Father</dt><dd>{{ c.sire or '—' }}</dd>
-    <dt>Calves</dt><dd>{% for k in calves %}<a href="{{ url_for('cattle_profile', cid=k.id) }}">{{ k.tag_no }}</a>{{ ', ' if not loop.last }}{% else %}—{% endfor %}</dd>
-    {% if c.sex == 'Female' %}<dt>Milk, 30 days</dt><dd>{{ milk30.t|num }} L over {{ milk30.d }} days{% if milk30.d %} ({{ (milk30.t / milk30.d)|num }} L/day){% endif %}</dd>{% endif %}
+    <dt>{{ _('Type') }}</dt><dd>{{ _(c.species) }}, {{ _(c.sex) }}</dd>
+    <dt>{{ _('Breed') }}</dt><dd>{{ c.breed|dv or '—' }}</dd>
+    <dt>{{ _('Born') }}</dt><dd>{{ c.dob or '—' }} {% if c.dob %}<span class="muted">({{ age_text(c.dob) }})</span>{% endif %}</dd>
+    <dt>{{ _('Colour') }}</dt><dd>{{ c.color|dv or '—' }}</dd>
+    <dt>{{ _('Weight') }}</dt><dd>{{ (c.weight_kg|num ~ ' kg') if c.weight_kg else '—' }}</dd>
+    <dt>{{ _('Source') }}</dt><dd>{{ _(c.source) if c.source else '—' }}{% if c.purchase_date %}, {{ c.purchase_date }}{% endif %}{% if c.purchase_price %}, {{ c.purchase_price|money }}{% endif %}</dd>
+    <dt>{{ _('Mother') }}</dt><dd>{% if c.dam_id %}<a href="{{ url_for('cattle_profile', cid=c.dam_id) }}">{{ c.dam_tag }} {{ c.dam_name|dv }}</a>{% else %}—{% endif %}</dd>
+    <dt>{{ _('Father') }}</dt><dd>{{ c.sire|dv or '—' }}</dd>
+    <dt>{{ _('Calves') }}</dt><dd>{% for k in calves %}<a href="{{ url_for('cattle_profile', cid=k.id) }}">{{ k.tag_no }}</a>{{ ', ' if not loop.last }}{% else %}—{% endfor %}</dd>
+    {% if c.sex == 'Female' %}<dt>{{ _('Milk, 30 days') }}</dt><dd>{{ _('{litres} L over {days} days', litres=milk30.t|num, days=milk30.d) }}{% if milk30.d %} ({{ (milk30.t / milk30.d)|num }} {{ _('L/day') }}){% endif %}</dd>{% endif %}
   </dl>
-  {% if c.notes %}<p class="full" style="flex-basis:100%">{{ c.notes }}</p>{% endif %}
+  {% if c.notes %}<p class="full" style="flex-basis:100%">{{ c.notes|dv }}</p>{% endif %}
 </div>
 <div class="grid">
   <div class="card wide">
-    <div class="row spread"><h2>Tasks</h2>
-      <span class="no-print"><a class="btn sm" href="{{ url_for('task_form', cattle_id=c.id, back=request.path) }}">+ Task</a>
-      <a class="small" href="{{ url_for('tasks') }}">All tasks</a></span></div>
+    <div class="row spread"><h2>{{ _('Tasks') }}</h2>
+      <span class="no-print"><a class="btn sm" href="{{ url_for('task_form', cattle_id=c.id, back=request.path) }}">+ {{ _('Task') }}</a>
+      <a class="small" href="{{ url_for('tasks') }}">{{ _('All tasks') }}</a></span></div>
     {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
-    {% else %}<p class="muted small">No open tasks for this animal.</p>{% endif %}
+    {% else %}<p class="muted small">{{ _('No open tasks for this animal.') }}</p>{% endif %}
   </div>
 {% for kind, cfg in records.items() %}
   {% if kind != 'milk' or c.sex == 'Female' %}
   <div class="card">
-    <div class="row spread"><h2>{{ cfg.title }}</h2>
-      <span class="no-print"><a class="btn sm" href="{{ url_for('record_form', kind=kind, cattle_id=c.id, back=request.path) }}">+ Add</a>
-      <a class="small" href="{{ url_for('records', kind=kind, cattle_id=c.id) }}">All</a></span></div>
+    <div class="row spread"><h2>{{ _(cfg.title) }}</h2>
+      <span class="no-print"><a class="btn sm" href="{{ url_for('record_form', kind=kind, cattle_id=c.id, back=request.path) }}">+ {{ _('Add') }}</a>
+      <a class="small" href="{{ url_for('records', kind=kind, cattle_id=c.id) }}">{{ _('All') }}</a></span></div>
     {% set rows = data[kind] %}
     {% if rows %}<div class="table-wrap"><table>
-      <tr>{% for f in cfg.fields if f[0] in cfg.list %}<th class="{{ 'n' if f[2] == 'number' }}">{{ f[1]|replace(' (blank = auto)', '') }}</th>{% endfor %}</tr>
-      {% for r in rows %}<tr>{% for f in cfg.fields if f[0] in cfg.list %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">{% if f[2] == 'number' %}{{ r[f[0]]|num }}{% elif r[f[0]] is not none %}{{ r[f[0]] }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
-    </table></div>{% else %}<p class="muted small">No records yet.</p>{% endif %}
+      <tr>{% for f in cfg.fields if f[0] in cfg.list %}<th class="{{ 'n' if f[2] == 'number' }}">{{ _(f[1]|replace(' (blank = auto)', '')) }}</th>{% endfor %}</tr>
+      {% for r in rows %}<tr>{% for f in cfg.fields if f[0] in cfg.list %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">{% if f[2] == 'number' %}{{ r[f[0]]|num }}{% elif r[f[0]] is not none %}{{ r[f[0]]|dv }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
+    </table></div>{% else %}<p class="muted small">{{ _('No records yet.') }}</p>{% endif %}
   </div>
   {% endif %}
 {% endfor %}

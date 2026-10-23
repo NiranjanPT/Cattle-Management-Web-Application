@@ -1,7 +1,10 @@
-# Gaushala: cattle management web app
+# VrushaA2 Dairy Tech (वृषाA2 डेरीटेक प्रा. लि.)
 
-A web application for running a cattle farm or gaushala: herd records, health and
-breeding, a dairy shop for customers, a Hindu calendar with nakshatras, and reports.
+*संस्कारातून समृद्धीकडे: from sanskar to prosperity.*
+
+The company website and a web application for running the farm: herd records, health
+and breeding, scheduled tasks, a dairy shop for customers, a Hindu calendar with nakshatras and a dashboard,
+in English and Marathi.
 
 ## Run it on your computer
 
@@ -49,12 +52,12 @@ for both databases at the end. Keep `cattle.db` as a backup.
 python app.py
 ```
 
-Open http://127.0.0.1:5000 and log in.
+Open http://127.0.0.1:5000: the company website, with **Log in** at the top right.
 
 | Login | Password | Can do |
 |---|---|---|
 | admin | admin123 | everything, including managing users |
-| staff | staff123 | cattle, records, products, orders, reports (demo data only) |
+| staff | staff123 | cattle, records, tasks, products, orders (demo data only) |
 | customer | customer123 | shop and calendar (demo data only) |
 
 Change the admin password on the **My profile** page straight away. Customers can
@@ -88,12 +91,15 @@ take a few minutes.
 - **PostgreSQL on Neon** for the database: hosted, backed up, nothing to install. The app
   talks to it with psycopg 3 through a small connection pool; Alembic manages the schema.
 - **Server-rendered HTML pages** (Jinja templates) with one CSS file: no JavaScript
-  build step. Works on phones and prints cleanly; follows the system's dark mode.
+  build step. Works on phones and prints cleanly. White theme in the logo's brown, with
+  the Mukta font (Google Fonts) for English and Devanagari.
 
 ### Modules
 | Module | What it does |
 |---|---|
-| Admin and user management | Admin adds staff, admins and customers, changes roles, disables accounts, resets passwords. Everyone can edit their own profile and password. |
+| Website | The public home page: logo and tagline, our values, the live product list with prices, today's panchang, how to order and contact details (set `BRAND_ADDRESS`, `BRAND_PHONE`, `BRAND_EMAIL` in `.env` and on Vercel). Visitors can create an account or log in from it; logged-in users reach it from **Website** in the menu. |
+| English and Marathi | **English / मराठी** at the top right of every page switches the whole site, website and app, including messages, dates and calendar names; the choice is remembered in the browser. Data is stored as typed and translated for display: words from the app's own lists (types, breeds, vaccines, statuses...) from `i18n.py`; text people type (animal and people names, colours, notes, product names and descriptions, task titles) by the free MyMemory service through the `deep-translator` library. Each text is translated once, the first time a Marathi page shows it (that page takes a few seconds longer), and kept in the `text_translations` table. Machine translation can get a sentence wrong; names come out well. The text sent is names, notes and product details, never phone numbers, emails or addresses. Text typed in Marathi is shown as typed. If the service can't be reached, the text stays as typed and it tries again ten minutes later. |
+| Admin and user management | Admin adds staff members (choosing their first password), changes roles, disables accounts and removes accounts (not their own; a customer with orders is kept for the order history and can be disabled instead). Customers create their own accounts. After an account is created its owner changes the password on My profile; an admin can reset a staff member's forgotten password (never a customer's or an admin's). Nobody can see a password. |
 | Cattle records and profiles | Register of every animal: tag, name, type, breed, sex, birth date, colour, weight, source and purchase price, mother and father, status (active, sold, dead), photo, notes. Each animal has a profile page with its age, calves, 30-day milk yield and its latest records of every kind. Printable. |
 | Health | Check-ups, illnesses, treatments, deworming, with vet and cost. |
 | Vaccination | Vaccine given, dose, next due date. Overdue and upcoming doses show on the dashboard and calendar. |
@@ -103,7 +109,7 @@ take a few minutes.
 | Dairy shop | Product catalogue (milk, ghee, curd, paneer, manure...) with stock. Customers add to cart and place pay-on-delivery orders; stock is reduced, and returned if staff cancel the order. Staff manage products and order status. |
 | Hindu calendar | Chaitra to Phalguna for any year (1900 to 2100), including adhika months. Each day shows tithi, paksha, nakshatra with pada, the moon's rashi, sunrise time and Agnivas (whether Agni is on earth, the day for havan); Purnima, Amavasya and Ekadashi are marked, and the Agni Nakshatra (Kathiri) period in May is outlined. A year overview lists each month's start, Purnima and end, and a reference page lists all 27 nakshatras with their span, ruling planet, deity and symbol. Farm events (vaccines due, expected calvings, scheduled tasks) appear on the calendar days, and **+** on a day schedules a task. |
 | Tasks | Schedule farm work: vaccination, health or deworming, feeding, breeding/AI, milking, havan/puja or anything else, for one animal, several or the whole herd, on a date, optionally repeating (daily, weekly, monthly, yearly), assigned to a staff member. Tasks show on the Tasks page, the calendar, the dashboard (this week, with overdue ones flagged), each animal's page and as a count in the menu. **Done →** on a record-type task opens that record form already filled in; saving it adds the records and completes the task in one step, and a repeating task schedules its next date. A havan on a day when Agni is not on earth gets a warning with the next good day. |
-| Reports and dashboard | Dashboard: herd size, today's and this month's milk, pregnancies, vaccines due, pending orders, monthly sales, a 14-day milk chart, upcoming calvings and recent health events. Reports for any date range: herd summary, milk by month and by animal, costs, feed used, shop sales, breeding; each downloadable as CSV. |
+| Dashboard | Herd size, today's and this month's milk, pregnancies, vaccines due, pending orders, monthly sales, a 14-day milk chart with each day's litres, upcoming calvings and recent health events. |
 
 Any record form can be filled for several animals at once (for example a herd-wide
 vaccination or feeding) by selecting more than one animal.
@@ -111,7 +117,8 @@ vaccination or feeding) by selecting more than one animal.
 ### Data model
 `users`, `cattle` (with `dam_id` pointing to the mother), `health_records`,
 `vaccinations`, `feedings`, `breedings`, `milk_records`, `products`, `orders`,
-`order_items`, `tasks` and `task_animals` (which animals a task is for). See
+`order_items`, `tasks`, `task_animals` (which animals a task is for) and
+`text_translations` (remembered Marathi for typed text). See
 `schema.sql`. Deleting an animal deletes its records and takes it off its tasks.
 
 ### About the calendar
@@ -134,7 +141,9 @@ from Bharani pada 3 to the end of Rohini pada 1, about 4 to 28 May.
 
 ## Files
 - `app.py`: all pages and logic
+- `i18n.py`: the Marathi text for every English text in the pages and messages
 - `panchang.py`: Hindu calendar calculations
+- `static/brand/`: the logo, from the company's PDF (full logo and the round mark, SVG and PNG)
 - `migrations/`, `alembic.ini`: database schema, managed by Alembic
 - `schema.sql`: readable copy of the full schema
 - `migrate_sqlite_to_postgres.py`: one-time move of the old `cattle.db` data
@@ -145,5 +154,5 @@ from Bharani pada 3 to the end of Rohini pada 1, about 4 to 28 May.
 
 ## Ideas for a next version
 SMS or WhatsApp reminders for tasks and vaccines;
-online payment (UPI) in the shop; Marathi and Hindi interface; daily milk
+online payment (UPI) in the shop; a Hindi interface; daily milk
 collection entry for the whole herd on one screen.

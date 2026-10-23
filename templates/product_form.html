@@ -1,15 +1,15 @@
-{% extends "base.html" %}{% block title %}Product{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Product') }}{% endblock %}
 {% block content %}
-<h1>{{ 'Edit ' + p.name if p else 'Add product' }}</h1>
+<h1>{{ _('Edit {name}', name=p.name|dv) if p else _('Add product') }}</h1>
 <div class="card"><form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Name * <input name="name" value="{{ p.name if p else '' }}" required></label>
-  <label>Category <select name="category">{% for c in cats %}<option {{ 'selected' if p and p.category == c }}>{{ c }}</option>{% endfor %}</select></label>
-  <label>Price (₹) * <input type="number" step="0.01" min="0" name="price" value="{{ p.price if p else '' }}" required></label>
-  <label>Unit * <input name="unit" list="units" value="{{ p.unit if p else '' }}" required placeholder="litre, kg, 500 g jar"><datalist id="units"><option>litre</option><option>kg</option><option>500 g</option><option>250 g</option><option>piece</option><option>bottle</option></datalist></label>
-  <label>Stock <input type="number" step="any" name="stock" value="{{ p.stock if p else 0 }}"></label>
-  <label class="check"><input type="checkbox" name="active" {{ 'checked' if not p or p.active }}> Show in shop</label>
-  <label class="full">Description <textarea name="description">{{ p.description or '' if p else '' }}</textarea></label>
-  <div class="full"><button>Save</button> <a href="{{ url_for('products') }}">Cancel</a></div>
+  <label>{{ _('Name') }} * <input name="name" value="{{ p.name if p else '' }}" required></label>
+  <label>{{ _('Category') }} <select name="category">{% for c in cats %}<option value="{{ c }}" {{ 'selected' if p and p.category == c }}>{{ _(c) }}</option>{% endfor %}</select></label>
+  <label>{{ _('Price (₹)') }} * <input type="number" step="0.01" min="0" name="price" value="{{ p.price if p else '' }}" required></label>
+  <label>{{ _('Unit') }} * <input name="unit" list="units" value="{{ p.unit if p else '' }}" required placeholder="litre, kg, 500 g jar"><datalist id="units"><option>litre</option><option>kg</option><option>500 g</option><option>250 g</option><option>piece</option><option>bottle</option></datalist></label>
+  <label>{{ _('Stock') }} <input type="number" step="any" name="stock" value="{{ p.stock if p else 0 }}"></label>
+  <label class="check"><input type="checkbox" name="active" {{ 'checked' if not p or p.active }}> {{ _('Show in shop') }}</label>
+  <label class="full">{{ _('Description') }} <textarea name="description">{{ p.description or '' if p else '' }}</textarea></label>
+  <div class="full actions"><button>{{ _('Save') }}</button> <a class="btn ghost" href="{{ url_for('products') }}">{{ _('Cancel') }}</a></div>
 </form></div>
 {% endblock %}

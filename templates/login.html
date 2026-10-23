@@ -1,14 +1,15 @@
-{% extends "base.html" %}{% block title %}Log in{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Log in') }}{% endblock %}
 {% block content %}
 <div class="auth card">
-  <h1>🐄 Gaushala</h1>
-  <p class="muted">Cattle management and dairy shop</p>
+  <img class="auth-logo" src="{{ url_for('static', filename='brand/logo-full.svg') }}" width="525" height="364" alt="{{ _(COMPANY) }}">
+  <h1>{{ _('Log in') }}</h1>
   <form method="post" class="stack">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <label class="full">Username <input name="username" required autofocus></label>
-    <label class="full">Password <input name="password" type="password" required></label>
-    <div class="full"><button>Log in</button></div>
+    <label class="full">{{ _('Username') }} <input name="username" required autofocus></label>
+    <label class="full">{{ _('Password') }} <input name="password" type="password" required></label>
+    <div class="full actions"><button>{{ _('Log in') }}</button></div>
   </form>
-  <p class="small">New customer? <a href="{{ url_for('register') }}">Create an account</a> to order dairy products.</p>
+  <p class="small">{{ _('New customer?') }} <a href="{{ url_for('register') }}">{{ _('Create an account') }}</a> {{ _('to order dairy products.') }}</p>
+  <p class="small"><a href="{{ url_for('index') }}">← {{ _('Back to the website') }}</a></p>
 </div>
 {% endblock %}

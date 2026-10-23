@@ -1,25 +1,26 @@
-"""Gaushala: a cattle management web application (Flask + PostgreSQL)."""
+"""VrushaA2 Dairy Tech: the company website and a cattle management web application (Flask + PostgreSQL)."""
 import atexit
-import csv
-import io
 import os
 import re
 import secrets
+import time
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import wraps
 from zoneinfo import ZoneInfo
 
+import flask
 import psycopg
 from dotenv import load_dotenv
-from flask import (Flask, Response, abort, flash, g, redirect, render_template,
-                   request, session, url_for)
+from flask import (Flask, abort, flash, g, has_request_context, redirect, request, session,
+                   url_for)
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+import i18n
 import panchang
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -141,7 +142,95 @@ def csrf_protect():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
     if request.method == "POST" and request.form.get("csrf") != session["csrf"]:
-        abort(400, "Form expired, please go back and try again.")
+        abort(400, tr("Form expired, please go back and try again."))
+
+
+# ---------------------------------------------------------------- language: English or Marathi
+
+def lang():
+    """The visitor's language, chosen with the switch in the header and kept in a cookie."""
+    code = request.cookies.get("lang") if has_request_context() else None
+    return code if code in i18n.LANGS else "en"
+
+
+def tr(text, **kw):
+    """Interface text in the visitor's language. Templates call it as _('...')."""
+    return i18n.translate(text, lang(), **kw)
+
+
+@app.template_filter("fdate")
+def fdate(d, fmt="%d %b %Y"):
+    """A date with month and weekday names in the visitor's language."""
+    return i18n.date_text(d, fmt, lang()) if d else ""
+
+
+app.jinja_env.globals.update(_=tr, LANGS=i18n.LANGS, BRAND=i18n.BRAND, COMPANY=i18n.COMPANY,
+                             TAGLINE=i18n.TAGLINE)
+
+# Text people type (animal names, notes, product names...) is stored as typed. In Marathi it is shown
+# machine-translated (i18n.machine_translate), each text once: the result is kept in text_translations.
+DATA_TRANSLATION = os.environ.get("DATA_TRANSLATION", "on") != "off"
+_translation_paused_until = 0.0  # after a failed attempt, so a slow or unreachable service doesn't slow pages
+
+
+def _saved_translations():
+    """English -> Marathi for typed text, read once per request; None before `alembic upgrade head`."""
+    if "mr_saved" not in g:
+        try:
+            g.mr_saved = {r["source"]: r["translated"]
+                          for r in q("SELECT source, translated FROM text_translations WHERE lang='mr'")}
+        except psycopg.errors.UndefinedTable:
+            g.mr_saved = None
+    return g.mr_saved
+
+
+@app.template_filter("dv")
+def data_text(text):
+    """Text someone typed, in the visitor's language. Not yet translated: English, and noted for translation."""
+    if not isinstance(text, str) or lang() != "mr" or not re.search("[A-Za-z]", text):
+        return "" if text is None else text
+    if text in i18n.MR:  # a breed, vaccine, feed... from the lists
+        return i18n.MR[text]
+    saved = _saved_translations()
+    if saved is None:
+        return text
+    if text not in saved:
+        g.setdefault("mr_missing", set()).add(text)
+    return saved.get(text, text)
+
+
+def _translate_new(texts):
+    """Translate texts no page has needed before and save them. True if any were saved."""
+    global _translation_paused_until
+    if not DATA_TRANSLATION or time.monotonic() < _translation_paused_until:
+        return False
+    found = i18n.machine_translate(sorted(texts)[:40], "mr", email=os.environ.get("MYMEMORY_EMAIL") or None)
+    if not found:
+        _translation_paused_until = time.monotonic() + 600
+        return False
+    with get_db().cursor() as cur:
+        cur.executemany("INSERT INTO text_translations (source, lang, translated) VALUES (%s, 'mr', %s)"
+                        " ON CONFLICT DO NOTHING", list(found.items()))
+    g.pop("mr_saved", None)
+    return True
+
+
+def render_template(name, **context):
+    """flask.render_template; a Marathi page showing newly typed text is drawn again once it is translated."""
+    page = flask.render_template(name, **context)
+    missing = g.pop("mr_missing", None)
+    if missing and _translate_new(missing):
+        page = flask.render_template(name, **context)
+    return page
+
+
+@app.route("/lang/<code>")
+def set_lang(code):
+    nxt = request.args.get("next", "")
+    resp = redirect(nxt if nxt.startswith("/") and not nxt.startswith(("//", "/\\")) else url_for("index"))
+    if code in i18n.LANGS:
+        resp.set_cookie("lang", code, max_age=365 * 24 * 3600, samesite="Lax", httponly=True)
+    return resp
 
 
 @app.context_processor
@@ -153,7 +242,7 @@ def inject():
         tasks_due = q("SELECT COUNT(*) AS n FROM tasks WHERE status='Open' AND due_date<=%s",
                       (date.today(),), one=True)["n"]
     return {"user": user, "csrf_token": session.get("csrf", ""), "tasks_due": tasks_due,
-            "cart_count": sum(cart.values()) if cart else 0, "today": date.today()}
+            "cart_count": sum(cart.values()) if cart else 0, "today": date.today(), "lang": lang()}
 
 
 # NUMERIC columns arrive as Decimal; Decimal(str(v)) also takes ints and floats from Python code
@@ -183,7 +272,7 @@ def age_text(dob):
     if date.today().day < d.day:
         months -= 1
     y, m = divmod(max(months, 0), 12)
-    return f"{y} y {m} m" if y else f"{m} m"
+    return tr("{y} y {m} m", y=y, m=m) if y else tr("{m} m", m=m)
 
 
 app.jinja_env.globals["age_text"] = age_text
@@ -198,12 +287,29 @@ def parse_date(s, default=None):
 
 # ---------------------------------------------------------------- login, register, profile
 
+def _website():
+    t = date.today()
+    stats = {"cattle": q("SELECT COUNT(*) AS n FROM cattle WHERE status='Active'", one=True)["n"],
+             "products": q("SELECT COUNT(*) AS n FROM products WHERE active=1", one=True)["n"]}
+    # BRAND_ADDRESS, BRAND_PHONE and BRAND_EMAIL in .env (and on Vercel); blank ones are not shown
+    contact = {k: os.environ.get(f"BRAND_{k.upper()}", "").strip() for k in ("address", "phone", "email")}
+    return render_template("home.html", stats=stats, contact=contact,
+                           products=q("SELECT * FROM products WHERE active=1 ORDER BY category, name LIMIT 8"),
+                           pt=panchang.day_info(t), pmonth=panchang.month_of(t), location=panchang.LOCATION)
+
+
 @app.route("/")
 def index():
+    """The company website; logged-in users go straight to their part of the app."""
     user = current_user()
     if user is None:
-        return redirect(url_for("login"))
+        return _website()
     return redirect(url_for("shop" if user["role"] == "customer" else "dashboard"))
+
+
+@app.route("/home")
+def website():
+    return _website()
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -214,7 +320,7 @@ def login():
             session["user_id"] = user["id"]
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("index"))
-        flash("Wrong username or password, or the account is disabled.", "error")
+        flash(tr("Wrong username or password, or the account is disabled."), "error")
     return render_template("login.html")
 
 
@@ -231,16 +337,16 @@ def register():
     if request.method == "POST":
         f = request.form
         if len(f["password"]) < 6:
-            flash("Password must be at least 6 characters.", "error")
+            flash(tr("Password must be at least 6 characters."), "error")
         elif q("SELECT 1 FROM users WHERE username=%s", (f["username"].strip(),)):
-            flash("That username is taken.", "error")
+            flash(tr("That username is taken."), "error")
         else:
             uid = ex("INSERT INTO users (username, password_hash, full_name, phone, email, address, role)"
                      " VALUES (%s,%s,%s,%s,%s,%s, 'customer')",
                      (f["username"].strip(), generate_password_hash(f["password"]), f["full_name"].strip(),
                       f.get("phone"), f.get("email"), f.get("address")))
             session["user_id"] = uid
-            flash("Welcome! Your account is ready.", "ok")
+            flash(tr("Welcome! Your account is ready."), "ok")
             return redirect(url_for("shop"))
     return render_template("register.html")
 
@@ -255,14 +361,14 @@ def profile():
            (f["full_name"], f.get("phone"), f.get("email"), f.get("address"), user["id"]))
         if f.get("new_password"):
             if not check_password_hash(user["password_hash"], f.get("old_password", "")):
-                flash("Current password is wrong; password not changed.", "error")
+                flash(tr("Current password is wrong; password not changed."), "error")
                 return redirect(url_for("profile"))
             if len(f["new_password"]) < 6:
-                flash("New password must be at least 6 characters.", "error")
+                flash(tr("New password must be at least 6 characters."), "error")
                 return redirect(url_for("profile"))
             ex("UPDATE users SET password_hash=%s WHERE id=%s",
                (generate_password_hash(f["new_password"]), user["id"]))
-        flash("Profile saved.", "ok")
+        flash(tr("Profile saved."), "ok")
         return redirect(url_for("profile"))
     return render_template("profile.html")
 
@@ -286,31 +392,69 @@ def user_form(uid=None):
         abort(404)
     if request.method == "POST":
         f = request.form
-        role = f["role"] if f["role"] in ("admin", "staff", "customer") else "staff"
+        # admins add farm staff (customers sign up themselves); an existing account's role can be changed
+        role = (f.get("role") if f.get("role") in ("admin", "staff", "customer") else u["role"]) if u else "staff"
         active = 1 if f.get("active") else 0
         if u and u["id"] == current_user()["id"] and (role != "admin" or not active):
-            flash("You cannot remove your own admin access.", "error")
+            flash(tr("You cannot remove your own admin access."), "error")
             return redirect(request.url)
         clash = q("SELECT id FROM users WHERE username=%s AND id<>%s", (f["username"].strip(), uid or 0))
         if clash:
-            flash("That username is taken.", "error")
+            flash(tr("That username is taken."), "error")
         elif not u and len(f.get("password", "")) < 6:
-            flash("Password must be at least 6 characters.", "error")
+            flash(tr("Password must be at least 6 characters."), "error")
         else:
             vals = (f["username"].strip(), f["full_name"], f.get("phone"), f.get("email"),
                     f.get("address"), role, active)
             if u:
+                # never the password: it is set when a staff account is added, changed by its owner on
+                # My profile, and for staff only, reset by an admin (user_password below)
                 ex("UPDATE users SET username=%s, full_name=%s, phone=%s, email=%s, address=%s, role=%s, active=%s"
                    " WHERE id=%s", vals + (uid,))
-                if f.get("password"):
-                    ex("UPDATE users SET password_hash=%s WHERE id=%s",
-                       (generate_password_hash(f["password"]), uid))
             else:
                 ex("INSERT INTO users (username, full_name, phone, email, address, role, active, password_hash)"
                    " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", vals + (generate_password_hash(f["password"]),))
-            flash("User saved.", "ok")
+            flash(tr("User saved."), "ok")
             return redirect(url_for("users"))
     return render_template("user_form.html", u=u)
+
+
+@app.route("/admin/users/<int:uid>/password", methods=["POST"])
+@login_required("admin")
+def user_password(uid):
+    """An admin sets a new password for a staff member who forgot theirs. Customers' and admins' are their own."""
+    u = q("SELECT * FROM users WHERE id=%s", (uid,), one=True) or abort(404)
+    if u["role"] != "staff":
+        abort(403)
+    pw, again = request.form.get("new_password", ""), request.form.get("confirm_password", "")
+    if len(pw) < 6:
+        flash(tr("New password must be at least 6 characters."), "error")
+    elif pw != again:
+        flash(tr("The two passwords do not match."), "error")
+    else:
+        ex("UPDATE users SET password_hash=%s WHERE id=%s", (generate_password_hash(pw), uid))
+        flash(tr("Password reset for {name}. Give them the new password; they can change it on My profile.",
+                 name=data_text(u["full_name"])), "ok")
+    return redirect(url_for("user_form", uid=uid))
+
+
+@app.route("/admin/users/<int:uid>/delete", methods=["POST"])
+@login_required("admin")
+def user_delete(uid):
+    u = q("SELECT * FROM users WHERE id=%s", (uid,), one=True) or abort(404)
+    orders = q("SELECT COUNT(*) AS n FROM orders WHERE user_id=%s", (uid,), one=True)["n"]
+    if uid == current_user()["id"]:
+        flash(tr("You cannot remove your own account."), "error")
+    elif orders:
+        # orders keep the customer's name and address, so the sales history stays complete
+        flash(tr("{name} has {n} orders, so the account is kept for the order history. "
+                 "Untick 'Account active' to stop them logging in.", name=data_text(u["full_name"]), n=orders),
+              "error")
+        return redirect(url_for("user_form", uid=uid))
+    else:
+        ex("DELETE FROM users WHERE id=%s", (uid,))  # their tasks stay, with nobody assigned
+        flash(tr("{name} removed.", name=data_text(u["full_name"])), "ok")
+    return redirect(url_for("users"))
 
 
 # ---------------------------------------------------------------- cattle
@@ -344,7 +488,7 @@ def _save_photo(file):
         return None
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
-        flash("Photo must be a JPG, PNG, WEBP or GIF image.", "error")
+        flash(tr("Photo must be a JPG, PNG, WEBP or GIF image."), "error")
         return None
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     name = secrets.token_hex(8) + "_" + secure_filename(file.filename)
@@ -364,9 +508,9 @@ def cattle_form(cid=None):
         vals = {k: (f.get(k) or None) for k in CATTLE_FIELDS}
         vals["tag_no"] = (vals["tag_no"] or "").strip()
         if not vals["tag_no"]:
-            flash("Tag number is required.", "error")
+            flash(tr("Tag number is required."), "error")
         elif q("SELECT 1 FROM cattle WHERE tag_no=%s AND id<>%s", (vals["tag_no"], cid or 0)):
-            flash("Another animal already has that tag number.", "error")
+            flash(tr("Another animal already has that tag number."), "error")
         else:
             photo = _save_photo(request.files.get("photo"))
             if photo:
@@ -378,7 +522,7 @@ def cattle_form(cid=None):
             else:
                 cid = ex(f"INSERT INTO cattle ({', '.join(cols)}) VALUES ({', '.join('%s' for _ in cols)})",
                          [vals[k] for k in cols])
-            flash("Animal saved.", "ok")
+            flash(tr("Animal saved."), "ok")
             return redirect(url_for("cattle_profile", cid=cid))
     dams = q("SELECT id, tag_no, name FROM cattle WHERE sex='Female' AND id<>%s ORDER BY tag_no", (cid or 0,))
     return render_template("cattle_form.html", c=c, dams=dams, species=SPECIES, breeds=BREEDS)
@@ -406,7 +550,7 @@ def cattle_profile(cid):
 @login_required("admin")
 def cattle_delete(cid):
     ex("DELETE FROM cattle WHERE id=%s", (cid,))
-    flash("Animal and all its records deleted.", "ok")
+    flash(tr("Animal and all its records deleted."), "ok")
     back = request.form.get("back", "")  # the register sends its own URL, so search and filter are kept
     return redirect(back if back.startswith("/cattle") and not back.startswith("//") else url_for("cattle_list"))
 
@@ -518,7 +662,7 @@ def record_form(kind, rid=None):
         vals = {name: (f.get(name) or None) for name, *_ in cfg["fields"]}
         missing = [n for n in cfg["required"] if not vals[n]]
         if not cattle_ids or missing:
-            flash("Please choose an animal and fill the required fields.", "error")
+            flash(tr("Please choose an animal and fill the required fields."), "error")
         else:
             nxt = done = None
             with get_db().transaction():  # all the records and the task, or nothing
@@ -540,7 +684,8 @@ def record_form(kind, rid=None):
                     done = q("SELECT * FROM tasks WHERE id=%s AND status='Open' FOR UPDATE", (task["id"],), one=True)
                     if done:
                         nxt = complete_task(done)
-            flash(f"Saved {len(cattle_ids)} {cfg['one']}{'s' if len(cattle_ids) > 1 else ''}.", "ok")
+            flash(tr("Saved {n} {what}.", n=len(cattle_ids),
+                     what=tr(cfg["one"] + ("s" if len(cattle_ids) > 1 else ""))), "ok")
             if done:
                 flash(_done_message(done, nxt), "ok")
             return redirect(_safe_back(url_for("records", kind=kind)))
@@ -560,7 +705,7 @@ def record_form(kind, rid=None):
 def record_delete(kind, rid):
     cfg = RECORDS.get(kind) or abort(404)
     ex(f"DELETE FROM {cfg['table']} WHERE id=%s", (rid,))
-    flash("Record deleted.", "ok")
+    flash(tr("Record deleted."), "ok")
     return redirect(request.referrer or url_for("records", kind=kind))
 
 
@@ -622,7 +767,8 @@ def complete_task(t):
 
 
 def _done_message(t, nxt):
-    return f"Task done: {t['title']}." + (f" Next one scheduled for {nxt:%d %b %Y}." if nxt else "")
+    return tr("Task done: {title}.", title=data_text(t["title"])) + (
+        " " + tr("Next one scheduled for {date}.", date=fdate(nxt)) if nxt else "")
 
 
 def next_havan_day(d, within=30):
@@ -673,7 +819,7 @@ def task_form(tid=None):
         assigned = f.get("assigned_to", type=int)
         assigned = assigned if assigned in {s["id"] for s in staff} else None
         if not due:
-            flash("Please choose a date for the task.", "error")
+            flash(tr("Please choose a date for the task."), "error")
         else:
             vals = (title, kind, item, due, repeat, all_animals, assigned, f.get("notes") or None)
             with get_db().transaction():
@@ -687,12 +833,13 @@ def task_form(tid=None):
                              vals + (current_user()["id"],))
                 for cid in cattle_ids:
                     get_db().execute("INSERT INTO task_animals (task_id, cattle_id) VALUES (%s, %s)", (tid, cid))
-            flash(f"Task saved: {title}, {due:%d %b %Y}.", "ok")
+            flash(tr("Task saved: {title}, {date}.", title=data_text(title), date=fdate(due)), "ok")
             agni = panchang.day_info(due)["agni"]
             if kind == "havan" and not agni["good_for_havan"]:
                 good = next_havan_day(due)
-                flash(f"{due:%d %b}: {agni['note']}."
-                      + (f" Next day with Agni on earth: {good:%a %d %b}." if good else ""), "error")
+                flash(tr("{date}: {note}.", date=fdate(due, "%d %b"), note=tr(agni["note"]))
+                      + (" " + tr("Next day with Agni on earth: {date}.", date=fdate(good, "%a %d %b"))
+                         if good else ""), "error")
             return redirect(_safe_back(url_for("tasks")))
     animals = q("SELECT id, tag_no, name FROM cattle WHERE status='Active'"
                 " OR id = ANY(%s) ORDER BY tag_no", (t["cattle_ids"] if t else [],))
@@ -721,7 +868,7 @@ def task_done(tid):
 @login_required(*FARM)
 def task_delete(tid):
     ex("DELETE FROM tasks WHERE id=%s", (tid,))
-    flash("Task deleted.", "ok")
+    flash(tr("Task deleted."), "ok")
     return redirect(_safe_back(url_for("tasks")))
 
 
@@ -760,7 +907,7 @@ def cart_add(pid):
     cart = session.get("cart", {})
     cart[str(pid)] = cart.get(str(pid), 0) + qty
     session["cart"] = cart
-    flash(f"Added {p['name']} to your cart.", "ok")
+    flash(tr("Added {product} to your cart.", product=data_text(p["name"])), "ok")
     return redirect(request.referrer or url_for("shop"))
 
 
@@ -771,7 +918,7 @@ def cart_remove(pid):
     if cart.pop(str(pid), None) is not None:
         session["cart"] = cart
         p = q("SELECT name FROM products WHERE id=%s", (pid,), one=True)
-        flash(f"Removed {p['name'] if p else 'the item'} from your cart.", "ok")
+        flash(tr("Removed {product} from your cart.", product=data_text(p["name"]) if p else tr("the item")), "ok")
     return redirect(url_for("cart"))
 
 
@@ -794,12 +941,12 @@ def cart():
             return redirect(url_for("cart"))
         lines, total = _cart_lines()
         if not lines:
-            flash("Your cart is empty.", "error")
+            flash(tr("Your cart is empty."), "error")
             return redirect(url_for("shop"))
         f = request.form
         phone, address = f.get("phone", "").strip(), f.get("address", "").strip()
         if not _valid_phone(phone) or not address:
-            flash("Please enter a phone number (at least 10 digits) and a delivery address.", "error")
+            flash(tr("Please enter a phone number (at least 10 digits) and a delivery address."), "error")
             return render_template("cart.html", lines=lines, total=total, form=f)
         with get_db().transaction():
             # lock the products, then check stock, so two customers can't both buy the last one
@@ -814,10 +961,10 @@ def cart():
                        (oid, l["p"]["id"], l["p"]["name"], l["p"]["price"], l["qty"]))
                     ex("UPDATE products SET stock=stock-%s WHERE id=%s", (l["qty"], l["p"]["id"]))
         if short:
-            flash("Not enough stock for: " + ", ".join(short), "error")
+            flash(tr("Not enough stock for: {products}", products=", ".join(short)), "error")
             return redirect(url_for("cart"))
         session["cart"] = {}
-        flash(f"Order #{oid} placed. We will confirm it soon.", "ok")
+        flash(tr("Order #{id} placed. We will confirm it soon.", id=oid), "ok")
         return redirect(url_for("order_detail", oid=oid))
     lines, total = _cart_lines()
     return render_template("cart.html", lines=lines, total=total)
@@ -873,7 +1020,7 @@ def order_status(oid):
                " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=%s)",
                (oid, oid))
         ex("UPDATE orders SET status=%s WHERE id=%s", (new, oid))
-    flash(f"Order #{oid} marked {new}.", "ok")
+    flash(tr("Order #{id} marked {status}.", id=oid, status=tr(new)), "ok")
     return redirect(request.referrer or url_for("manage_orders"))
 
 
@@ -896,7 +1043,7 @@ def product_form(pid=None):
             vals = (f["name"].strip(), f["category"], f.get("description"), float(f["price"]), f["unit"],
                     float(f.get("stock") or 0), 1 if f.get("active") else 0)
         except ValueError:
-            flash("Price and stock must be numbers.", "error")
+            flash(tr("Price and stock must be numbers."), "error")
             return render_template("product_form.html", p=p, cats=PRODUCT_CATEGORIES)
         if p:
             ex("UPDATE products SET name=%s, category=%s, description=%s, price=%s, unit=%s, stock=%s, active=%s WHERE id=%s",
@@ -904,7 +1051,7 @@ def product_form(pid=None):
         else:
             ex("INSERT INTO products (name, category, description, price, unit, stock, active) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                vals)
-        flash("Product saved.", "ok")
+        flash(tr("Product saved."), "ok")
         return redirect(url_for("products"))
     return render_template("product_form.html", p=p, cats=PRODUCT_CATEGORIES)
 
@@ -930,15 +1077,17 @@ def calendar():
         lo, hi = days[0]["date"].isoformat(), days[-1]["date"].isoformat()
         for r in q("SELECT v.next_due d, c.tag_no, v.vaccine FROM vaccinations v JOIN cattle c ON c.id=v.cattle_id"
                    " WHERE v.next_due BETWEEN %s AND %s", (lo, hi)):
-            events.setdefault(r["d"].isoformat(), []).append(f"Vaccine due: {r['tag_no']} ({r['vaccine']})")
+            # events are worded in the template, so typed text in them can be shown in Marathi
+            events.setdefault(r["d"].isoformat(), []).append({"kind": "vaccine", "tag": r["tag_no"],
+                                                              "what": r["vaccine"]})
         for r in q("SELECT b.expected_calving d, c.tag_no FROM breedings b JOIN cattle c ON c.id=b.cattle_id"
                    " WHERE b.actual_calving IS NULL AND b.pregnancy<>'Not pregnant'"
                    " AND b.expected_calving BETWEEN %s AND %s", (lo, hi)):
-            events.setdefault(r["d"].isoformat(), []).append(f"Calving expected: {r['tag_no']}")
+            events.setdefault(r["d"].isoformat(), []).append({"kind": "calving", "tag": r["tag_no"]})
         for t in _task_rows("t.due_date BETWEEN %s AND %s", (lo, hi)):
-            who = "whole herd" if t["all_animals"] else t["tags"]
             events.setdefault(t["due_date"].isoformat(), []).append(
-                ("✓ " if t["status"] == "Done" else "Task: ") + t["title"] + (f" ({who})" if who else ""))
+                {"kind": "done" if t["status"] == "Done" else "task", "what": t["title"],
+                 "herd": bool(t["all_animals"]), "tags": t["tags"]})
     # Shaka and (Chaitradi) Vikram Samvat years both begin at Chaitra
     overview = []
     for m in months:
@@ -967,7 +1116,7 @@ def nakshatras():
     return render_template("nakshatras.html", rows=rows, today=panchang.day_info(date.today()))
 
 
-# ---------------------------------------------------------------- dashboard & reports
+# ---------------------------------------------------------------- dashboard
 
 @app.route("/dashboard")
 @login_required(*FARM)
@@ -1007,82 +1156,21 @@ def dashboard():
                            pt=panchang.day_info(t), pmonth=m, task_rows=task_rows)
 
 
-def _report_data(d_from, d_to):
-    a = (d_from, d_to)
-    return {
-        "herd": q("SELECT species, breed, sex, status, COUNT(*) n FROM cattle GROUP BY species, breed, sex, status"
-                  " ORDER BY status, species, breed"),
-        "milk_month": q("SELECT to_char(date, 'YYYY-MM') AS month, SUM(litres) litres, COUNT(DISTINCT cattle_id) animals"
-                        " FROM milk_records WHERE date BETWEEN %s AND %s GROUP BY month ORDER BY month", a),
-        "milk_animal": q("SELECT c.tag_no, c.name, SUM(m.litres) litres, COUNT(DISTINCT m.date) days,"
-                         " ROUND(SUM(m.litres)*1.0/COUNT(DISTINCT m.date),2) per_day FROM milk_records m"
-                         " JOIN cattle c ON c.id=m.cattle_id WHERE m.date BETWEEN %s AND %s"
-                         " GROUP BY c.id ORDER BY litres DESC", a),
-        "costs": q("SELECT 'Health' item, COALESCE(SUM(cost),0) amount FROM health_records WHERE date BETWEEN %s AND %s"
-                   " UNION ALL SELECT 'Vaccination', COALESCE(SUM(cost),0) FROM vaccinations"
-                   " WHERE date_given BETWEEN %s AND %s"
-                   " UNION ALL SELECT 'Feed', COALESCE(SUM(cost),0) FROM feedings WHERE date BETWEEN %s AND %s", a * 3),
-        "feed": q("SELECT feed_type, SUM(quantity_kg) kg, SUM(cost) cost FROM feedings WHERE date BETWEEN %s AND %s"
-                  " GROUP BY feed_type ORDER BY kg DESC", a),
-        "sales": q("SELECT i.name product, SUM(i.qty) qty, SUM(i.qty*i.price) amount FROM order_items i"
-                   " JOIN orders o ON o.id=i.order_id WHERE o.status<>'Cancelled'"
-                   " AND o.created_at::date BETWEEN %s AND %s GROUP BY i.name ORDER BY amount DESC", a),
-        "breeding": q("SELECT c.tag_no, b.date, b.method, b.pregnancy, b.expected_calving, b.actual_calving"
-                      " FROM breedings b JOIN cattle c ON c.id=b.cattle_id WHERE b.date BETWEEN %s AND %s"
-                      " ORDER BY b.date DESC", a),
-    }
-
-
-REPORT_TITLES = {"herd": "Herd summary", "milk_month": "Milk by month", "milk_animal": "Milk by animal",
-                 "costs": "Costs", "feed": "Feed used", "sales": "Shop sales", "breeding": "Breeding"}
-
-
-def _range():
-    t = date.today()
-    d_from = parse_date(request.args.get("from"), t - timedelta(days=90))
-    d_to = parse_date(request.args.get("to"), t)
-    return d_from.isoformat(), d_to.isoformat()
-
-
-@app.route("/reports")
-@login_required(*FARM)
-def reports():
-    d_from, d_to = _range()
-    return render_template("reports.html", data=_report_data(d_from, d_to), titles=REPORT_TITLES,
-                           d_from=d_from, d_to=d_to)
-
-
-@app.route("/reports/<name>.csv")
-@login_required(*FARM)
-def report_csv(name):
-    if name not in REPORT_TITLES:
-        abort(404)
-    d_from, d_to = _range()
-    rows = _report_data(d_from, d_to)[name]
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    if rows:
-        w.writerow(rows[0].keys())
-        w.writerows([list(r.values()) for r in rows])  # dict rows: tuple(r) would give the keys
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": f"attachment; filename={name}_{d_from}_{d_to}.csv"})
-
-
 @app.errorhandler(403)
 def forbidden(e):
-    return render_template("error.html", code=403, msg="You don't have access to this page."), 403
+    return render_template("error.html", code=403, msg=tr("You don't have access to this page.")), 403
 
 
 @app.errorhandler(404)
 def not_found(e):
-    return render_template("error.html", code=404, msg="Page not found."), 404
+    return render_template("error.html", code=404, msg=tr("Page not found.")), 404
 
 
 @app.errorhandler(psycopg.errors.DataError)
 def bad_value(e):
     # e.g. a date or number typed by hand that PostgreSQL can't read; SQLite used to store it as text
-    return render_template("error.html", code=400, msg="Some of the values entered are not valid. "
-                                                       "Please go back and check dates and numbers."), 400
+    return render_template("error.html", code=400, msg=tr("Some of the values entered are not valid. "
+                                                          "Please go back and check dates and numbers.")), 400
 
 
 init_db()

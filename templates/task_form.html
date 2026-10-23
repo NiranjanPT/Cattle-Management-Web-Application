@@ -1,31 +1,31 @@
-{% extends "base.html" %}{% block title %}{{ 'Edit' if t else 'New' }} task{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Edit task') if t else _('New task') }}{% endblock %}
 {% block content %}
-<h1>{{ 'Edit' if t else 'New' }} task</h1>
+<h1>{{ _('Edit task') if t else _('New task') }}</h1>
 <div class="card"><form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="back" value="{{ back }}">
-  <label>What *
-    <select name="kind" id="kind">{% for k, label in TASK_KINDS.items() %}<option value="{{ k }}" {{ 'selected' if t and t.kind == k }}>{{ label }}</option>{% endfor %}</select></label>
-  <label>Item <span class="muted small">(vaccine, feed, treatment...)</span>
+  <label>{{ _('What') }} *
+    <select name="kind" id="kind">{% for k, label in TASK_KINDS.items() %}<option value="{{ k }}" {{ 'selected' if t and t.kind == k }}>{{ _(label) }}</option>{% endfor %}</select></label>
+  <label>{{ _('Item') }} <span class="muted small">{{ _('(vaccine, feed, treatment...)') }}</span>
     <input name="item" id="item" list="items-{{ t.kind if t else 'vaccinations' }}" value="{{ t.item or '' if t else '' }}" autocomplete="off"></label>
-  {% for k, opts in items.items() %}<datalist id="items-{{ k }}">{% for o in opts %}<option value="{{ o }}">{% endfor %}</datalist>{% endfor %}
-  <label class="full">Title <span class="muted small">(blank = made from what and item)</span>
+  {% for k, opts in items.items() %}<datalist id="items-{{ k }}">{% for o in opts %}<option value="{{ o }}">{{ _(o) if lang != 'en' }}</option>{% endfor %}</datalist>{% endfor %}
+  <label class="full">{{ _('Title') }} <span class="muted small">{{ _('(blank = made from what and item)') }}</span>
     <input name="title" value="{{ t.title if t else '' }}"></label>
-  <label>Date *
+  <label>{{ _('Date') }} *
     <input type="date" name="due_date" value="{{ (t.due_date if t else pre_date).isoformat() }}" required></label>
-  <label>Repeat
-    <select name="repeat">{% for k, label in REPEATS.items() %}<option value="{{ k }}" {{ 'selected' if t and t.repeat == k }}>{{ label }}</option>{% endfor %}</select></label>
-  <label>Assigned to
-    <select name="assigned_to"><option value="">Nobody yet</option>
-    {% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if t and t.assigned_to == s.id }}>{{ s.full_name }}</option>{% endfor %}</select></label>
-  <label class="full"><input type="checkbox" name="all_animals" id="all_animals" value="1" {{ 'checked' if t and t.all_animals }}> Whole herd (all active animals)</label>
-  <label class="full" id="pick">Animals <span class="muted small">(hold Ctrl or ⌘ to pick several; none = not about particular animals)</span>
+  <label>{{ _('Repeat') }}
+    <select name="repeat">{% for k, label in REPEATS.items() %}<option value="{{ k }}" {{ 'selected' if t and t.repeat == k }}>{{ _(label) }}</option>{% endfor %}</select></label>
+  <label>{{ _('Assigned to') }}
+    <select name="assigned_to"><option value="">{{ _('Nobody yet') }}</option>
+    {% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if t and t.assigned_to == s.id }}>{{ s.full_name|dv }}</option>{% endfor %}</select></label>
+  <label class="full"><input type="checkbox" name="all_animals" id="all_animals" value="1" {{ 'checked' if t and t.all_animals }}> {{ _('Whole herd (all active animals)') }}</label>
+  <label class="full" id="pick">{{ _('Animals') }} <span class="muted small">{{ _('(hold Ctrl or ⌘ to pick several; none = not about particular animals)') }}</span>
     <select name="cattle_id" multiple size="6">
-    {% for a in animals %}<option value="{{ a.id }}" {{ 'selected' if (t and a.id in t.cattle_ids) or (not t and pre_cattle == a.id) }}>{{ a.tag_no }} {{ a.name or '' }}</option>{% endfor %}
+    {% for a in animals %}<option value="{{ a.id }}" {{ 'selected' if (t and a.id in t.cattle_ids) or (not t and pre_cattle == a.id) }}>{{ a.tag_no }} {{ a.name|dv }}</option>{% endfor %}
     </select></label>
-  <label class="full">Notes <textarea name="notes">{{ t.notes or '' if t else '' }}</textarea></label>
-  <p class="full small muted">For a havan, check the calendar: 🔥 Agni on <b>Prithvi</b> (earth) is the day for havan. You will be warned if the chosen day is not.</p>
-  <div class="full"><button>Save task</button> <a href="{{ back or url_for('tasks') }}">Cancel</a></div>
+  <label class="full">{{ _('Notes') }} <textarea name="notes">{{ t.notes or '' if t else '' }}</textarea></label>
+  <p class="full small muted">{{ _('For a havan, check the calendar: 🔥 Agni on Prithvi (earth) is the day for havan. You will be warned if the chosen day is not.') }}</p>
+  <div class="full actions"><button>{{ _('Save task') }}</button> <a class="btn ghost" href="{{ back or url_for('tasks') }}">{{ _('Cancel') }}</a></div>
 </form></div>
 <script>
   // suggest items for the chosen kind, and hide the animal list for whole-herd tasks

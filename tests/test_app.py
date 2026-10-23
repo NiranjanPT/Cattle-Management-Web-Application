@@ -10,10 +10,9 @@ import psycopg
 import pytest
 from werkzeug.security import generate_password_hash
 
-from conftest import login
+from conftest import Browser, login
 
 T = date.today()
-REPORTS = ["herd", "milk_month", "milk_animal", "costs", "feed", "sales", "breeding"]
 
 
 @pytest.fixture(scope="module")
@@ -68,12 +67,10 @@ def stock(app_module, pid):
 def farm_pages(f):
     pages = ["/dashboard", "/cattle", "/cattle?status=&q=gir", "/cattle/new", f"/cattle/{f['cow']}",
              f"/cattle/{f['cow']}/edit", f"/cattle/{f['calf']}", "/admin/orders", "/admin/orders?status=Pending",
-             "/admin/products", "/admin/products/new", f"/admin/products/{f['product']}/edit", "/reports",
-             f"/reports?from={T - timedelta(days=400)}&to={T}"]
+             "/admin/products", "/admin/products/new", f"/admin/products/{f['product']}/edit"]
     for kind, rid in f["rid"].items():
         pages += [f"/records/{kind}", f"/records/{kind}/new", f"/records/{kind}/{rid}/edit",
                   f"/records/{kind}?cattle_id={f['cow']}&from={T - timedelta(days=30)}&to={T}"]
-    pages += [f"/reports/{name}.csv" for name in REPORTS]
     return pages
 
 
@@ -93,7 +90,6 @@ def assert_pages(b, urls, status):
 # ------------------------------------------------------------------ every page, every role
 
 def test_wrong_password_is_refused(fresh_db, farm):
-    from conftest import Browser
     b = Browser(fresh_db.app.test_client())
     b.get("/login")
     r = b.post("/login", {"username": "admin", "password": "nope"})
@@ -117,6 +113,15 @@ def test_admin_sees_every_page(fresh_db, farm):
     assert b.get("/").headers["Location"].endswith("/dashboard")
     assert_pages(b, farm_pages(farm) + everyone_pages(farm) + ADMIN_ONLY
                  + [f"/admin/users/{farm['staff']}/edit", f"/orders/{farm['order']}"], 200)
+
+
+def test_every_page_works_in_marathi(fresh_db, farm):
+    b = login(fresh_db, "admin", "admin123")
+    b.get("/lang/mr")
+    assert_pages(b, farm_pages(farm) + everyone_pages(farm) + ADMIN_ONLY + ["/home", f"/orders/{farm['order']}"], 200)
+    register = b.get("/cattle").get_data(as_text=True)
+    assert "जनावरांची नोंदवही" in register and "गाय" in register  # Kamdhenu is a Cow
+    assert "लस देय" in b.get("/calendar").get_data(as_text=True)  # a vaccine falls due today
 
 
 def test_staff_sees_farm_pages_but_not_users(fresh_db, farm):
@@ -166,13 +171,76 @@ def test_cattle_search_ignores_case(fresh_db, farm):
     assert "GIR-T1" in html and "MUR-T2" not in html
 
 
-def test_csv_export_has_values(fresh_db, farm):
-    b = login(fresh_db, "staff", "staff123")
-    lines = b.get("/reports/milk_animal.csv").get_data(as_text=True).splitlines()
-    assert lines[0] == "tag_no,name,litres,days,per_day"
-    assert lines[1] == "GIR-T1,Kamdhenu,9.00,1,9.00"
-    sales = b.get(f"/reports/sales.csv?from={T - timedelta(days=7)}&to={T}").get_data(as_text=True).splitlines()
-    assert "Test ghee" in sales[1]
+def test_admin_removes_users(fresh_db, farm):
+    admin = login(fresh_db, "admin", "admin123")
+    with fresh_db.app.app_context():
+        uid = fresh_db.ex("INSERT INTO users (username, password_hash, full_name, role)"
+                          " VALUES ('temp', 'x', 'Temp Worker', 'staff')")
+        tid = fresh_db.ex("INSERT INTO tasks (title, kind, due_date, assigned_to) VALUES ('Sweep', 'other', %s, %s)",
+                          (T, uid))
+    assert f"/admin/users/{uid}/delete" in admin.get("/admin/users").get_data(as_text=True)
+    page = admin.post(f"/admin/users/{uid}/delete", follow_redirects=True).get_data(as_text=True)
+    assert "Temp Worker removed." in page
+    with fresh_db.app.app_context():
+        assert fresh_db.q("SELECT 1 FROM users WHERE id=%s", (uid,)) == []
+        assert fresh_db.q("SELECT assigned_to FROM tasks WHERE id=%s", (tid,), one=True)["assigned_to"] is None
+    # a customer with orders is kept, so the sales history stays complete
+    page = admin.post(f"/admin/users/{farm['customer']}/delete", follow_redirects=True).get_data(as_text=True)
+    assert re.search(r"Customer has \d+ orders", page)
+    # never yourself, and only admins
+    admin.post(f"/admin/users/{farm['admin']}/delete")
+    assert f"/admin/users/{farm['admin']}/delete" not in admin.get("/admin/users").get_data(as_text=True)
+    staff = login(fresh_db, "staff", "staff123")
+    assert staff.post(f"/admin/users/{farm['customer2']}/delete").status_code == 403
+    with fresh_db.app.app_context():
+        assert len(fresh_db.q("SELECT 1 FROM users WHERE id IN (%s, %s, %s)",
+                              (farm["customer"], farm["admin"], farm["customer2"]))) == 3
+
+
+def test_admin_sets_a_password_only_when_adding_staff(fresh_db, farm):
+    admin = login(fresh_db, "admin", "admin123")
+    assert 'name="password"' in admin.get("/admin/users/new").get_data(as_text=True)
+    assert 'name="password"' not in admin.get(f"/admin/users/{farm['customer']}/edit").get_data(as_text=True)
+    # a new account is always farm staff, whatever role is sent
+    admin.post("/admin/users/new", {"full_name": "New Hand", "username": "newhand", "password": "hand123",
+                                    "role": "customer", "active": "on"})
+    login(fresh_db, "newhand", "hand123")
+    with fresh_db.app.app_context():
+        assert fresh_db.q("SELECT role FROM users WHERE username='newhand'", one=True)["role"] == "staff"
+    # editing never changes a password, even if one is sent
+    admin.post(f"/admin/users/{farm['customer']}/edit", {"full_name": "Customer", "username": "customer",
+                                                         "password": "taken1", "role": "customer", "active": "on"})
+    login(fresh_db, "customer", "customer123")
+    b = Browser(fresh_db.app.test_client())
+    b.get("/login")
+    assert b.post("/login", {"username": "customer", "password": "taken1"}).status_code == 200  # refused
+
+
+def test_admin_resets_only_staff_passwords(fresh_db, farm):
+    admin = login(fresh_db, "admin", "admin123")
+    with fresh_db.app.app_context():
+        sid = fresh_db.ex("INSERT INTO users (username, password_hash, full_name, role) VALUES (%s, %s, %s, 'staff')",
+                          ("forgetful", generate_password_hash("oldpass1"), "Forgetful Worker"))
+    assert f"/admin/users/{sid}/password" in admin.get(f"/admin/users/{sid}/edit").get_data(as_text=True)
+    assert "/password" not in admin.get(f"/admin/users/{farm['customer']}/edit").get_data(as_text=True)
+    reset = f"/admin/users/{sid}/password"
+    page = admin.post(reset, {"new_password": "fresh12", "confirm_password": "fresh13"}, follow_redirects=True)
+    assert "do not match" in page.get_data(as_text=True)
+    page = admin.post(reset, {"new_password": "fresh12", "confirm_password": "fresh12"}, follow_redirects=True)
+    assert "Password reset for Forgetful Worker" in page.get_data(as_text=True)
+    login(fresh_db, "forgetful", "fresh12")
+    new = {"new_password": "taken12", "confirm_password": "taken12"}
+    assert admin.post(f"/admin/users/{farm['customer']}/password", new).status_code == 403  # customers: never
+    assert admin.post(f"/admin/users/{farm['admin']}/password", new).status_code == 403  # admins: My profile
+    staff = login(fresh_db, "staff", "staff123")
+    assert staff.post(reset, new).status_code == 403  # only admins reset
+    login(fresh_db, "forgetful", "fresh12")
+
+
+def test_reports_are_gone(fresh_db, farm):
+    b = login(fresh_db, "admin", "admin123")
+    assert b.get("/reports").status_code == 404 and b.get("/reports/sales.csv").status_code == 404
+    assert "/reports" not in b.get("/dashboard").get_data(as_text=True)
 
 
 def test_bad_values_do_not_crash(fresh_db, farm):

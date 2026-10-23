@@ -1,49 +1,59 @@
-{% extends "base.html" %}{% block title %}Hindu calendar{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Hindu calendar') }}{% endblock %}
+{% macro mname(m) %}{{ (_('Adhika') ~ ' ') if m.adhika }}{{ m.devanagari if lang == 'mr' else m.name }}{% endmacro %}
+{% macro event(e) -%}
+  {%- if e.kind == 'vaccine' %}{{ _('Vaccine due: {tag} ({vaccine})', tag=e.tag, vaccine=e.what|dv) }}
+  {%- elif e.kind == 'calving' %}{{ _('Calving expected: {tag}', tag=e.tag) }}
+  {%- else %}{{ ('✓ ' ~ e.what|dv) if e.kind == 'done' else _('Task: {title}', title=e.what|dv) }}
+    {%- if e.herd or e.tags %} ({{ _('whole herd') if e.herd else e.tags }}){% endif %}
+  {%- endif %}
+{%- endmacro %}
 {% block content %}
 <div class="row spread">
-  <h1>Hindu calendar · Shaka {{ shaka }} / Vikram Samvat {{ vikram }}</h1>
+  <h1>{{ _('Hindu calendar') }} · {{ _('Shaka') }} {{ shaka }} / {{ _('Vikram Samvat') }} {{ vikram }}</h1>
   <div class="row">
     <a class="btn ghost sm" href="{{ url_for('calendar', year=year - 1, m=0) }}">← {{ year - 1 }}</a>
-    <a class="btn ghost sm" href="{{ url_for('calendar') }}">Today</a>
+    <a class="btn ghost sm" href="{{ url_for('calendar') }}">{{ _('Today') }}</a>
     <a class="btn ghost sm" href="{{ url_for('calendar', year=year + 1, m=0) }}">{{ year + 1 }} →</a>
-    <a class="btn sm" href="{{ url_for('nakshatras') }}">27 Nakshatras</a>
+    <a class="btn sm" href="{{ url_for('nakshatras') }}">{{ _('27 Nakshatras') }}</a>
   </div>
 </div>
 <div class="tabs">
-{% for m in months %}<a href="{{ url_for('calendar', year=year, m=loop.index0) }}" class="{{ 'on' if loop.index0 == sel }}" title="{{ m.start }} to {{ m.end }}">{{ 'Adhika ' if m.adhika }}{{ m.name }}</a>{% endfor %}
+{% for m in months %}<a href="{{ url_for('calendar', year=year, m=loop.index0) }}" class="{{ 'on' if loop.index0 == sel }}" title="{{ m.start }} – {{ m.end }}">{{ mname(m) }}</a>{% endfor %}
 </div>
 <div class="card">
   <div class="row spread">
-    <h2 style="margin:0">{{ 'Adhika ' if month.adhika }}{{ month.name }} <span class="muted">{{ month.devanagari }}</span></h2>
-    <span class="muted small">{{ days[0].date.strftime('%d %b %Y') }} to {{ days[-1].date.strftime('%d %b %Y') }} · amanta month (new moon to new moon)</span>
+    <h2 style="margin:0">{{ mname(month) }}{% if lang != 'mr' %} <span class="muted">{{ month.devanagari }}</span>{% endif %}</h2>
+    <span class="muted small">{{ days[0].date|fdate('%d %b %Y') }} – {{ days[-1].date|fdate('%d %b %Y') }} · {{ _('amanta month (new moon to new moon)') }}</span>
   </div>
-  {% if month.adhika %}<p class="small">This is an extra (adhika) month: the sun does not change rashi during it.</p>{% endif %}
+  {% if month.adhika %}<p class="small">{{ _('This is an extra (adhika) month: the sun does not change rashi during it.') }}</p>{% endif %}
   <div class="cal" style="margin-top:12px">
-    {% for w in ['Mon · Soma', 'Tue · Mangala', 'Wed · Budha', 'Thu · Guru', 'Fri · Shukra', 'Sat · Shani', 'Sun · Ravi'] %}<div class="wd">{{ w }}</div>{% endfor %}
-    {% for _ in range(lead_blanks) %}<div class="day blank"></div>{% endfor %}
+    {% for w in ['Mon · Soma', 'Tue · Mangala', 'Wed · Budha', 'Thu · Guru', 'Fri · Shukra', 'Sat · Shani', 'Sun · Ravi'] %}<div class="wd">{{ _(w) }}</div>{% endfor %}
+    {% for i in range(lead_blanks) %}<div class="day blank"></div>{% endfor %}
     {% for d in days %}
+    {% set short = d.date|fdate('%d %b') %}
     <div class="day {{ 'today' if d.date == today }} {{ 'purnima' if d.tithi == 'Purnima' }} {{ 'amavasya' if d.tithi == 'Amavasya' }} {{ 'agninak' if d.agni_nakshatra }}">
-      <div class="d"><span>{{ d.date.day }} {{ d.date.strftime('%b') }}</span><span class="muted small">{{ d.weekday[:-4] }}{% if user.role != 'customer' %} <a class="add no-print" href="{{ url_for('task_form', date=d.date.isoformat(), back=request.full_path) }}" title="Schedule a task on {{ d.date.strftime('%d %b') }}" aria-label="Schedule a task on {{ d.date.strftime('%d %b') }}">+</a>{% endif %}</span></div>
-      <div class="t">{{ d.paksha }} {{ d.tithi }}{% if d.tithi in ('Purnima', 'Amavasya') %} {{ '🌕' if d.tithi == 'Purnima' else '🌑' }}{% elif d.tithi == 'Ekadashi' %} ✦{% endif %}</div>
-      <div class="nk" title="{{ nakshatras[d.nakshatra_index][3] }} · ruled by {{ nakshatras[d.nakshatra_index][2] }}">{{ d.nakshatra }} {{ d.pada }}</div>
-      <div class="muted">{{ d.nakshatra_dev }} · Moon in {{ d.moon_rashi }}</div>
-      <div class="agni {{ 'good' if d.agni.good_for_havan else 'bad' }}" title="{{ d.agni.note }}">🔥 Agni: {{ d.agni.place }} {{ d.agni.devanagari }}</div>
-      {% if d.agni_nakshatra %}<div class="agni bad" title="Sun from Bharani pada 3 to Rohini pada 1">☀ Agni Nakshatra (Kathiri)</div>{% endif %}
-      <div class="muted">Sunrise {{ d.sunrise.strftime('%H:%M') }}</div>
-      {% set evs = events.get(d.date.isoformat(), []) %}{% if evs|length > 2 %}<details class="ev"><summary>● {{ evs|length }} farm events</summary>{% for e in evs %}<div>{{ e }}</div>{% endfor %}</details>
-      {% else %}{% for e in evs %}<div class="ev">● {{ e }}</div>{% endfor %}{% endif %}
+      <div class="d"><span>{{ short }}</span><span class="muted small">{{ _(d.weekday) if lang == 'mr' else d.weekday[:-4] }}{% if user.role != 'customer' %} <a class="add no-print" href="{{ url_for('task_form', date=d.date.isoformat(), back=request.full_path) }}" title="{{ _('Schedule a task on {day}', day=short) }}" aria-label="{{ _('Schedule a task on {day}', day=short) }}">+</a>{% endif %}</span></div>
+      <div class="t">{{ _(d.paksha) }} {{ _(d.tithi) }}{% if d.tithi in ('Purnima', 'Amavasya') %} {{ '🌕' if d.tithi == 'Purnima' else '🌑' }}{% elif d.tithi == 'Ekadashi' %} ✦{% endif %}</div>
+      {% set nk = nakshatras[d.nakshatra_index] %}
+      <div class="nk" title="{{ _(nk[3]) }} · {{ _('ruled by {planet}', planet=_(nk[2])) }}">{{ d.nakshatra_dev if lang == 'mr' else d.nakshatra }} {{ d.pada }}</div>
+      <div class="muted">{% if lang != 'mr' %}{{ d.nakshatra_dev }} · {% endif %}{{ _('Moon in {rashi}', rashi=_(d.moon_rashi)) }}</div>
+      <div class="agni {{ 'good' if d.agni.good_for_havan else 'bad' }}" title="{{ _(d.agni.note) }}">🔥 {{ _('Agni') }}: {{ d.agni.devanagari if lang == 'mr' else d.agni.place ~ ' ' ~ d.agni.devanagari }}</div>
+      {% if d.agni_nakshatra %}<div class="agni bad" title="{{ _('Sun from Bharani pada 3 to Rohini pada 1') }}">☀ {{ _('Agni Nakshatra (Kathiri)') }}</div>{% endif %}
+      <div class="muted">{{ _('Sunrise') }} {{ d.sunrise.strftime('%H:%M') }}</div>
+      {% set evs = events.get(d.date.isoformat(), []) %}{% if evs|length > 2 %}<details class="ev"><summary>● {{ _('{n} farm events', n=evs|length) }}</summary>{% for e in evs %}<div>{{ event(e) }}</div>{% endfor %}</details>
+      {% else %}{% for e in evs %}<div class="ev">● {{ event(e) }}</div>{% endfor %}{% endif %}
     </div>
     {% endfor %}
   </div>
-  <p class="small muted">Tithi and nakshatra are shown as they stand at sunrise in {{ location }}, calculated with the PyEphem astronomy library and the Lahiri ayanamsa; on days when a tithi or nakshatra changes near sunrise, check a local panchang for muhurta timing.
-  <b>Agni</b> is the Agnivas used for havan: from the tithi and weekday, Agni is on earth (Prithvi, good for havan), in the sky (Akasha) or in the underworld (Patala), when havan is not advised.
-  Days with an orange border fall in <b>Agni Nakshatra</b> (Kathiri), when the sun moves from Bharani pada 3 to Rohini pada 1, about 4 to 28 May.
-  {% if user.role != 'customer' %} Red lines are farm events: vaccines due, expected calvings and scheduled tasks. Use <b>+</b> on a day to schedule a task.{% endif %}</p>
+  <p class="small muted">{{ _('Tithi and nakshatra are shown as they stand at sunrise in {place}, calculated with the PyEphem astronomy library and the Lahiri ayanamsa; on days when a tithi or nakshatra changes near sunrise, check a local panchang for muhurta timing.', place=_(location)) }}
+  {{ _('Agni is the Agnivas used for havan: from the tithi and weekday, Agni is on earth (Prithvi, good for havan), in the sky (Akasha) or in the underworld (Patala), when havan is not advised.') }}
+  {{ _('Days with an orange border fall in Agni Nakshatra (Kathiri), when the sun moves from Bharani pada 3 to Rohini pada 1, about 4 to 28 May.') }}
+  {% if user.role != 'customer' %} {{ _('Red lines are farm events: vaccines due, expected calvings and scheduled tasks. Use + on a day to schedule a task.') }}{% endif %}</p>
 </div>
-<div class="card table-wrap"><h2>The year at a glance</h2><table>
-<tr><th>#</th><th>Month</th><th></th><th>Starts (Pratipada)</th><th>Purnima</th><th>Ends (Amavasya)</th></tr>
-{% for m in months %}<tr><td>{{ loop.index }}</td><td><a href="{{ url_for('calendar', year=year, m=loop.index0) }}">{{ 'Adhika ' if m.adhika }}{{ m.name }}</a></td><td>{{ m.devanagari }}</td>
-{% set o = overview[loop.index0] %}<td>{{ o.first.strftime('%d %b %Y') }}</td>
-<td>{{ o.purnima.strftime('%d %b %Y') if o.purnima else '' }}</td><td>{{ o.last.strftime('%d %b %Y') }}</td></tr>{% endfor %}
+<div class="card table-wrap"><h2>{{ _('The year at a glance') }}</h2><table>
+<tr><th>#</th><th>{{ _('Month') }}</th><th></th><th>{{ _('Starts (Pratipada)') }}</th><th>{{ _('Purnima') }}</th><th>{{ _('Ends (Amavasya)') }}</th></tr>
+{% for m in months %}<tr><td>{{ loop.index }}</td><td><a href="{{ url_for('calendar', year=year, m=loop.index0) }}">{{ (_('Adhika') ~ ' ') if m.adhika }}{{ m.name }}</a></td><td>{{ m.devanagari }}</td>
+{% set o = overview[loop.index0] %}<td>{{ o.first|fdate('%d %b %Y') }}</td>
+<td>{{ o.purnima|fdate('%d %b %Y') if o.purnima else '' }}</td><td>{{ o.last|fdate('%d %b %Y') }}</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

@@ -1,23 +1,23 @@
-{% extends "base.html" %}{% block title %}Shop{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Shop') }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>Farm-fresh dairy shop</h1><a class="btn ghost" href="{{ url_for('cart') }}">🛒 Cart ({{ cart_count }})</a></div>
+<div class="row spread"><h1>{{ _('Farm-fresh dairy shop') }}</h1><a class="btn ghost" href="{{ url_for('cart') }}">🛒 {{ _('Cart') }} ({{ cart_count }})</a></div>
 <div class="tabs">
-  <a href="{{ url_for('shop') }}" class="{{ 'on' if not cat }}">All</a>
-  {% for c in cats %}<a href="{{ url_for('shop', category=c) }}" class="{{ 'on' if cat == c }}">{{ c }}</a>{% endfor %}
+  <a href="{{ url_for('shop') }}" class="{{ 'on' if not cat }}">{{ _('All') }}</a>
+  {% for c in cats %}<a href="{{ url_for('shop', category=c) }}" class="{{ 'on' if cat == c }}">{{ _(c) }}</a>{% endfor %}
 </div>
 <div class="products">
 {% for p in products %}
   <div class="card product">
-    <span class="badge">{{ p.category }}</span>
-    <h2 style="margin:4px 0 0">{{ p.name }}</h2>
-    <p class="small muted" style="margin:0">{{ p.description or '' }}</p>
-    <div class="price">{{ p.price|money }} <span class="small muted">/ {{ p.unit }}</span></div>
-    {% if p.stock > 0 %}<span class="small muted">{{ p.stock|num }} in stock</span>
+    <span class="badge">{{ _(p.category) }}</span>
+    <h2 style="margin:4px 0 0">{{ p.name|dv }}</h2>
+    <p class="small muted" style="margin:0">{{ p.description|dv }}</p>
+    <div class="price">{{ p.price|money }} <span class="small muted">/ {{ p.unit|dv }}</span></div>
+    {% if p.stock > 0 %}<span class="small muted">{{ _('{n} in stock', n=p.stock|num) }}</span>
     <form method="post" action="{{ url_for('cart_add', pid=p.id) }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <input type="number" name="qty" value="1" min="1" max="{{ p.stock|int }}" aria-label="Quantity"><button>Add to cart</button></form>
-    {% else %}<span class="badge bad">Out of stock</span>{% endif %}
+      <input type="number" name="qty" value="1" min="1" max="{{ p.stock|int }}" aria-label="{{ _('Quantity') }}"><button>{{ _('Add to cart') }}</button></form>
+    {% else %}<span class="badge bad">{{ _('Out of stock') }}</span>{% endif %}
   </div>
-{% else %}<p class="muted">No products yet.</p>{% endfor %}
+{% else %}<p class="muted">{{ _('No products yet.') }}</p>{% endfor %}
 </div>
 {% endblock %}

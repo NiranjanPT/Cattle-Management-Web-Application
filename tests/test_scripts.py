@@ -18,7 +18,7 @@ sys.path.insert(0, ROOT)
 import migrate_sqlite_to_postgres as mig  # noqa: E402
 
 
-MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py"]  # in order
+MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py", "0003_text_translations.py"]  # in order
 
 
 def _migration_module(name="0001_initial_schema.py"):
@@ -133,7 +133,7 @@ def test_alembic_downgrade_and_upgrade(empty_db):
     alembic("downgrade", "base")
     assert tables() == {"alembic_version"}
     alembic("upgrade", "head")
-    assert tables() == {"alembic_version", *mig.TABLES, "tasks", "task_animals"}
+    assert tables() == {"alembic_version", *mig.TABLES, "tasks", "task_animals", "text_translations"}
     with psycopg.connect(empty_db.replace("-pooler", "", 1), prepare_threshold=None) as c:
         assert c.execute("SHOW timezone").fetchone()[0] == "Asia/Kolkata"  # database default, direct connection
 

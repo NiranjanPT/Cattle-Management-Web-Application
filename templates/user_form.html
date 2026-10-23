@@ -1,18 +1,40 @@
-{% extends "base.html" %}{% block title %}{{ 'Edit user' if u else 'Add user' }}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Edit user') if u else _('Add staff member') }}{% endblock %}
 {% block content %}
-<h1>{{ 'Edit ' + u.full_name if u else 'Add user' }}</h1>
+<h1>{{ _('Edit {name}', name=u.full_name|dv) if u else _('Add staff member') }}</h1>
 <div class="card"><form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Full name <input name="full_name" value="{{ u.full_name if u else '' }}" required></label>
-  <label>Username <input name="username" value="{{ u.username if u else '' }}" required></label>
-  <label>{{ 'New password (leave blank to keep)' if u else 'Password' }} <input name="password" type="password" {{ '' if u else 'required minlength=6' }}></label>
-  <label>Role <select name="role">
-    {% for r in ['staff', 'admin', 'customer'] %}<option value="{{ r }}" {{ 'selected' if u and u.role == r }}>{{ r|title }}</option>{% endfor %}
+  <label>{{ _('Full name') }} <input name="full_name" value="{{ u.full_name if u else '' }}" required></label>
+  <label>{{ _('Username') }} <input name="username" value="{{ u.username if u else '' }}" autocomplete="off" required></label>
+  {% if u %}
+  <label>{{ _('Role') }} <select name="role">
+    {% for r, l in [('staff', 'Staff'), ('admin', 'Admin'), ('customer', 'Customer')] %}<option value="{{ r }}" {{ 'selected' if u.role == r }}>{{ _(l) }}</option>{% endfor %}
   </select></label>
-  <label>Phone <input name="phone" value="{{ u.phone or '' if u else '' }}"></label>
-  <label>Email <input name="email" type="email" value="{{ u.email or '' if u else '' }}"></label>
-  <label class="full">Address <textarea name="address">{{ u.address or '' if u else '' }}</textarea></label>
-  <label class="check full"><input type="checkbox" name="active" {{ 'checked' if not u or u.active }}> Account active (can log in)</label>
-  <div class="full"><button>Save</button> <a href="{{ url_for('users') }}">Cancel</a></div>
-</form></div>
+  {% else %}
+  {# a staff member's password is chosen once, here; afterwards only they change it, on My profile #}
+  <label>{{ _('Password') }} <input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+  {% endif %}
+  <label>{{ _('Phone') }} <input name="phone" value="{{ u.phone or '' if u else '' }}"></label>
+  <label>{{ _('Email') }} <input name="email" type="email" value="{{ u.email or '' if u else '' }}"></label>
+  <label class="full">{{ _('Address') }} <textarea name="address">{{ u.address or '' if u else '' }}</textarea></label>
+  <label class="check full"><input type="checkbox" name="active" {{ 'checked' if not u or u.active }}> {{ _('Account active (can log in)') }}</label>
+  <div class="full actions"><button>{{ _('Save') }}</button> <a class="btn ghost" href="{{ url_for('users') }}">{{ _('Cancel') }}</a>
+    {% if u and u.id != user.id %}<button class="danger push" form="remove-user">{{ _('Remove user') }}</button>{% endif %}</div>
+</form>
+<p class="small muted">{{ _("Passwords are set when a staff account is added and changed by their owner on My profile. An admin can reset only a staff member's password. Nobody can see a password.") }}</p>
+{% if u and u.role == 'staff' %}
+<form method="post" action="{{ url_for('user_password', uid=u.id) }}" class="stack reset-pw">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2 class="full">{{ _('Reset password') }}</h2>
+  <p class="full small muted" style="margin:0">{{ _('For a staff member who has forgotten their password. Give them the new one; they can change it on My profile.') }}</p>
+  <label>{{ _('New password') }} <input name="new_password" type="password" minlength="6" autocomplete="new-password" required></label>
+  <label>{{ _('Confirm new password') }} <input name="confirm_password" type="password" minlength="6" autocomplete="new-password" required></label>
+  <div class="full actions"><button>{{ _('Reset password') }}</button></div>
+</form>
+{% endif %}
+{% if u and u.id != user.id %}
+<form id="remove-user" method="post" action="{{ url_for('user_delete', uid=u.id) }}"
+  onsubmit="return confirm({{ _('Remove the account of {name}? This cannot be undone.', name=u.full_name|dv)|tojson|forceescape }})">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"></form>
+{% endif %}
+</div>
 {% endblock %}

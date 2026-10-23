@@ -1,16 +1,16 @@
-{% extends "base.html" %}{% block title %}Tasks{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Tasks') }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>Tasks</h1><a class="btn" href="{{ url_for('task_form') }}">+ New task</a></div>
+<div class="row spread"><h1>{{ _('Tasks') }}</h1><a class="btn" href="{{ url_for('task_form') }}">+ {{ _('New task') }}</a></div>
 <div class="row card">
-  <a class="btn {{ 'ghost' if mine }} sm" href="{{ url_for('tasks') }}">Everyone's tasks</a>
-  <a class="btn {{ 'ghost' if not mine }} sm" href="{{ url_for('tasks', mine=1) }}">Assigned to me</a>
-  <span class="muted small">{{ open_rows|length }} open. For vaccination, health, feeding, breeding and milking tasks, <b>Done →</b> opens that record form already filled in; saving it completes the task, and a repeating task schedules its next date.</span>
+  <a class="btn {{ 'ghost' if mine }} sm" href="{{ url_for('tasks') }}">{{ _("Everyone's tasks") }}</a>
+  <a class="btn {{ 'ghost' if not mine }} sm" href="{{ url_for('tasks', mine=1) }}">{{ _('Assigned to me') }}</a>
+  <span class="muted small">{{ _('{n} open.', n=open_rows|length) }} {{ _('For vaccination, health, feeding, breeding and milking tasks, Done → opens that record form already filled in; saving it completes the task, and a repeating task schedules its next date.') }}</span>
 </div>
-<div class="card"><h2>Open</h2>
+<div class="card"><h2>{{ _('Open') }}</h2>
   {% if open_rows %}{% set rows, back = open_rows, request.full_path %}{% include "_task_table.html" %}
-  {% else %}<p class="muted">No open tasks. Schedule one with <b>+ New task</b> or from a day on the <a href="{{ url_for('calendar') }}">calendar</a>.</p>{% endif %}
+  {% else %}<p class="muted">{{ _('No open tasks. Schedule one with + New task or from a day on the calendar.') }} <a href="{{ url_for('calendar') }}">{{ _('Calendar') }}</a></p>{% endif %}
 </div>
-{% if done_rows %}<div class="card"><h2>Recently done</h2>
+{% if done_rows %}<div class="card"><h2>{{ _('Recently done') }}</h2>
   {% set rows, back = done_rows, request.full_path %}{% include "_task_table.html" %}
 </div>{% endif %}
 {% endblock %}

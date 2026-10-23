@@ -27,6 +27,7 @@ if not TEST_URL:
 if os.environ.get("DATABASE_URL") and _target(TEST_URL) == _target(os.environ["DATABASE_URL"]):
     pytest.exit("DATABASE_URL_TEST points at the same database as DATABASE_URL; refusing to run.", returncode=2)
 os.environ["DATABASE_URL"] = TEST_URL  # app.py reads DATABASE_URL; set it before app is imported
+os.environ["DATA_TRANSLATION"] = "off"  # no calls to the translation service; tests that need it fake it
 
 
 def alembic(cmd, rev):

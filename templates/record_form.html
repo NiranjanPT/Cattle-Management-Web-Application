@@ -1,25 +1,26 @@
-{% extends "base.html" %}{% block title %}{{ cfg.title }}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _(cfg.title) }}{% endblock %}
 {% block content %}
-<h1>{{ 'Edit' if r else 'Add' }} {{ cfg.one }}</h1>
-{% if task %}<div class="flash ok">Completing task <b>{{ task.title }}</b> (due {{ task.due_date.strftime('%d %b %Y') }}). Check the details and save: the task is then marked done{% if task.repeat != 'none' %} and the next one is scheduled{% endif %}.</div>{% endif %}
+<h1>{{ _('Edit {what}', what=_(cfg.one)) if r else _('Add {what}', what=_(cfg.one)) }}</h1>
+{% if task %}<div class="flash ok">{{ _('Completing task {title} (due {date}).', title=task.title|dv, date=task.due_date|fdate('%d %b %Y')) }}
+  {{ _('Check the details and save: the task is then marked done and the next one is scheduled.') if task.repeat != 'none' else _('Check the details and save: the task is then marked done.') }}</div>{% endif %}
 <div class="card"><form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="back" value="{{ back }}">
   {% if task %}<input type="hidden" name="task" value="{{ task.id }}">{% endif %}
-  <label class="full">Animal{% if not r %} (hold Ctrl or ⌘ to pick several for a group entry){% endif %} *
+  <label class="full">{{ _('Animal') }}{% if not r %} {{ _('(hold Ctrl or ⌘ to pick several for a group entry)') }}{% endif %} *
     <select name="cattle_id" {{ '' if r else 'multiple' }} required>
     {% for a in animals %}{% if kind not in ('milk', 'breeding') or a.sex == 'Female' or (r and r.cattle_id == a.id) %}
-      <option value="{{ a.id }}" {{ 'selected' if (r and r.cattle_id == a.id) or a.id in pre_ids }}>{{ a.tag_no }} {{ a.name or '' }}</option>
+      <option value="{{ a.id }}" {{ 'selected' if (r and r.cattle_id == a.id) or a.id in pre_ids }}>{{ a.tag_no }} {{ a.name|dv }}</option>
     {% endif %}{% endfor %}</select></label>
   {% for name, label, type, options in cfg.fields %}
     {% set val = r[name] if r and r[name] is not none else (prefill.get(name) or (today.isoformat() if type == 'date' and name == cfg.date else '')) %}
-    <label class="{{ 'full' if type == 'textarea' }}">{{ label }}{{ ' *' if name in cfg.required }}
+    <label class="{{ 'full' if type == 'textarea' }}">{{ _(label) }}{{ ' *' if name in cfg.required }}
     {# a value not in the list (e.g. a task's free-text vaccine) is kept as an extra option #}
-    {% if type == 'select' %}<select name="{{ name }}">{% for o in (options if not val or val in options else options + [val]) %}<option {{ 'selected' if val == o }}>{{ o }}</option>{% endfor %}</select>
+    {% if type == 'select' %}<select name="{{ name }}">{% for o in (options if not val or val in options else options + [val]) %}<option value="{{ o }}" {{ 'selected' if val == o }}>{{ _(o) }}</option>{% endfor %}</select>
     {% elif type == 'textarea' %}<textarea name="{{ name }}">{{ val }}</textarea>
     {% else %}<input name="{{ name }}" type="{{ type }}" {{ 'step=any min=0' if type == 'number' }} value="{{ val }}" {{ 'required' if name in cfg.required }}>{% endif %}
     </label>
   {% endfor %}
-  <div class="full"><button>Save</button> <a href="{{ back or url_for('records', kind=kind) }}">Cancel</a></div>
+  <div class="full actions"><button>{{ _('Save') }}</button> <a class="btn ghost" href="{{ back or url_for('records', kind=kind) }}">{{ _('Cancel') }}</a></div>
 </form></div>
 {% endblock %}

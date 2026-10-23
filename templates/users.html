@@ -1,17 +1,22 @@
-{% extends "base.html" %}{% block title %}Users{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Users') }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>Users</h1><a class="btn" href="{{ url_for('user_form') }}">+ Add user</a></div>
+<div class="row spread"><h1>{{ _('Users') }}</h1><a class="btn" href="{{ url_for('user_form') }}">+ {{ _('Add staff member') }}</a></div>
 <div class="tabs">
   {% for r, l in [('', 'All'), ('admin', 'Admins'), ('staff', 'Farm staff'), ('customer', 'Customers')] %}
-  <a href="{{ url_for('users', role=r) }}" class="{{ 'on' if role == r }}">{{ l }}</a>{% endfor %}
+  <a href="{{ url_for('users', role=r) }}" class="{{ 'on' if role == r }}">{{ _(l) }}</a>{% endfor %}
 </div>
 <div class="card table-wrap"><table>
-<tr><th>Name</th><th>Username</th><th>Role</th><th>Phone</th><th>Email</th><th>Status</th><th>Joined</th><th></th></tr>
+<tr><th>{{ _('Name') }}</th><th>{{ _('Username') }}</th><th>{{ _('Role') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email') }}</th><th>{{ _('Status') }}</th><th>{{ _('Joined') }}</th><th></th></tr>
 {% for u in users %}
-<tr><td>{{ u.full_name }}</td><td>{{ u.username }}</td><td>{{ u.role|title }}</td><td>{{ u.phone or '' }}</td>
-<td>{{ u.email or '' }}</td><td>{% if u.active %}<span class="badge ok">Active</span>{% else %}<span class="badge bad">Disabled</span>{% endif %}</td>
-<td>{{ u.created_at|dt("%Y-%m-%d") }}</td><td><a href="{{ url_for('user_form', uid=u.id) }}">Edit</a></td></tr>
+<tr><td>{{ u.full_name|dv }}</td><td>{{ u.username }}</td><td>{{ _(u.role|title) }}</td><td>{{ u.phone or '' }}</td>
+<td>{{ u.email or '' }}</td><td>{% if u.active %}<span class="badge ok">{{ _('Active') }}</span>{% else %}<span class="badge bad">{{ _('Disabled') }}</span>{% endif %}</td>
+<td>{{ u.created_at|dt("%Y-%m-%d") }}</td>
+<td class="acts no-print"><a href="{{ url_for('user_form', uid=u.id) }}">{{ _('Edit') }}</a>
+  {% if u.id != user.id %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}"
+    onsubmit="return confirm({{ _('Remove the account of {name}? This cannot be undone.', name=u.full_name|dv)|tojson|forceescape }})">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger sm" aria-label="{{ _('Remove') }} {{ u.full_name|dv }}">{{ _('Remove') }}</button></form>{% endif %}</td></tr>
 {% endfor %}
 </table></div>
-<p class="small muted">Admins manage everything including users. Farm staff manage cattle, records, products and orders. Customers can only shop and see the calendar.</p>
+<p class="small muted">{{ _('Admins manage everything including users. Farm staff manage cattle, records, products and orders. Customers can only shop and see the calendar.') }}
+  {{ _('A customer with orders cannot be removed, so the order history stays complete; untick Account active instead.') }}</p>
 {% endblock %}

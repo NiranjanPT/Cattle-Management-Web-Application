@@ -6,3 +6,4 @@ alembic>=1.13
 SQLAlchemy>=2.0
 tzdata  # time zone data; Windows has none built in
 ephem>=4.1  # sun, moon and sunrise for the Hindu calendar
+deep-translator==1.11.4  # Marathi for text people type (free MyMemory service)

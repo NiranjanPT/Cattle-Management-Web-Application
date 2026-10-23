@@ -1,26 +1,26 @@
 {# Task list shared by the Tasks page, the dashboard and the animal profile. Needs `rows` and `back`. #}
 <div class="table-wrap"><table>
-<tr><th>Due</th><th>Task</th><th>Animals</th><th>Assigned to</th><th></th></tr>
+<tr><th>{{ _('Due') }}</th><th>{{ _('Task') }}</th><th>{{ _('Animals') }}</th><th>{{ _('Assigned to') }}</th><th></th></tr>
 {% for t in rows %}
 {% set late = t.status == 'Open' and t.due_date < today %}
 <tr class="{{ 'task-done' if t.status == 'Done' }}">
   <td class="nw">{% if t.status == 'Done' %}✓ {{ t.done_at|dt('%d %b') }}
-    {% else %}<span class="badge {{ 'bad' if late else 'warn' if t.due_date == today }}">{{ 'Overdue · ' if late }}{{ 'Today' if t.due_date == today else t.due_date.strftime('%a %d %b') }}</span>{% endif %}</td>
-  <td><b>{{ t.title }}</b> <span class="muted small">{{ TASK_KINDS[t.kind] }}{% if t.repeat != 'none' %} · {{ REPEATS[t.repeat]|lower }}{% endif %}</span>
-    {% if t.kind == 'havan' %}{% set a = agni_on(t.due_date) %}<div class="agni {{ 'good' if a.good_for_havan else 'bad' }}">🔥 {{ a.note }}</div>{% endif %}
-    {% if t.notes %}<div class="muted small">{{ t.notes }}</div>{% endif %}</td>
-  <td>{{ 'Whole herd' if t.all_animals else (t.tags or '—') }}</td>
-  <td>{{ t.assignee or '—' }}</td>
+    {% else %}<span class="badge {{ 'bad' if late else 'warn' if t.due_date == today }}">{{ (_('Overdue') ~ ' · ') if late }}{{ _('Today') if t.due_date == today else t.due_date|fdate('%a %d %b') }}</span>{% endif %}</td>
+  <td><b>{{ t.title|dv }}</b> <span class="muted small">{{ _(TASK_KINDS[t.kind]) }}{% if t.repeat != 'none' %} · {{ _(REPEATS[t.repeat])|lower }}{% endif %}</span>
+    {% if t.kind == 'havan' %}{% set a = agni_on(t.due_date) %}<div class="agni {{ 'good' if a.good_for_havan else 'bad' }}">🔥 {{ _(a.note) }}</div>{% endif %}
+    {% if t.notes %}<div class="muted small">{{ t.notes|dv }}</div>{% endif %}</td>
+  <td>{{ _('Whole herd') if t.all_animals else (t.tags or '—') }}</td>
+  <td>{{ t.assignee|dv or '—' }}</td>
   <td class="acts no-print">
     {% if t.status == 'Open' %}
       {% if t.kind in TASK_KINDS and t.kind not in ('havan', 'other') %}
-      <a class="btn sm" href="{{ url_for('record_form', kind=t.kind, task=t.id, back=back) }}" title="Opens the {{ TASK_KINDS[t.kind]|lower }} record form, filled in; saving it completes the task">Done →</a>
+      <a class="btn sm" href="{{ url_for('record_form', kind=t.kind, task=t.id, back=back) }}" title="{{ _('Opens the record form, filled in; saving it completes the task') }}">{{ _('Done') }} →</a>
       {% else %}
-      <form method="post" action="{{ url_for('task_done', tid=t.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="sm">Done</button></form>
+      <form method="post" action="{{ url_for('task_done', tid=t.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="sm">{{ _('Done') }}</button></form>
       {% endif %}
-      <a class="small" href="{{ url_for('task_form', tid=t.id, back=back) }}">Edit</a>
+      <a class="small" href="{{ url_for('task_form', tid=t.id, back=back) }}">{{ _('Edit') }}</a>
     {% endif %}
-    <form method="post" action="{{ url_for('task_delete', tid=t.id) }}" onsubmit="return confirm('Delete this task?')"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="danger sm" aria-label="Delete task {{ t.title }}">✕</button></form>
+    <form method="post" action="{{ url_for('task_delete', tid=t.id) }}" onsubmit="return confirm({{ _('Delete this task?')|tojson|forceescape }})"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="danger sm" aria-label="{{ _('Delete task') }} {{ t.title|dv }}">✕</button></form>
   </td>
 </tr>
 {% endfor %}
