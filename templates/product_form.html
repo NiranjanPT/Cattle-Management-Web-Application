@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}{{ _('Product') }}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Edit {name}', name=p.name|dv) if p else _('Add product') }}{% endblock %}
 {% block content %}
 <h1>{{ _('Edit {name}', name=p.name|dv) if p else _('Add product') }}</h1>
 <div class="card"><form method="post" class="stack">

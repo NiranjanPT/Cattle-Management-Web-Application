@@ -1,0 +1,16 @@
+{% extends "site.html" %}
+{% block title %}{{ _('Contact') }}{% endblock %}
+{% block site_content %}
+<section class="block" aria-labelledby="contact-title"><div class="wrap contact">
+  <div>
+    <h1 id="contact-title" class="page-title">{{ _('Contact') }}</h1>
+    <p class="lead">{{ _('Questions about an order, a visit to the farm or a regular delivery? Get in touch.') }}</p>
+    <dl class="facts">
+      <dt>{{ _('Address') }}</dt><dd>{{ contact.address or _(location) }}</dd>
+      {% if contact.phone %}<dt>{{ _('Phone') }}</dt><dd><a href="tel:{{ contact.phone|replace(' ', '') }}">{{ contact.phone }}</a></dd>{% endif %}
+      {% if contact.email %}<dt>{{ _('Email') }}</dt><dd><a href="mailto:{{ contact.email }}">{{ contact.email }}</a></dd>{% endif %}
+    </dl>
+  </div>
+  <img src="{{ url_for('static', filename='brand/logo-mark.svg') }}" alt="" width="160" height="160">
+</div></section>
+{% endblock %}

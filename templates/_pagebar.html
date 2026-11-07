@@ -1,0 +1,9 @@
+{# "← Back" and the breadcrumbs, above the page title. `back_to` and `trail` come from page_place() in app.py;
+   there is no Back on the home page, the login page and the dashboard. #}
+{% if back_to %}<div class="pagebar no-print">
+  <a class="back" href="{{ back_to }}"{% if not back_known %} data-history{% endif %}><span aria-hidden="true">←</span> {{ _('Back') }}</a>
+  <nav class="crumbs" aria-label="{{ _('You are here') }}"><ol>
+    {% for label, url in trail %}<li><a href="{{ url }}">{{ label }}</a></li>{% endfor %}
+    <li aria-current="page">{{ here }}</li>
+  </ol></nav>
+</div>{% endif %}

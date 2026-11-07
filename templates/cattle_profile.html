@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block title %}{{ c.tag_no }}{% endblock %}
+{% set tab_names = {'health': 'Health', 'vaccinations': 'Vaccinations', 'feeding': 'Feeding', 'breeding': 'Breeding', 'milk': 'Milk'} %}
 {% block content %}
-<div class="row spread">
+<div class="row spread page-head">
   <h1>{{ c.tag_no }}{% if c.name %} · {{ c.name|dv }}{% endif %} <span class="badge {{ 'ok' if c.status == 'Active' else 'bad' }}">{{ _(c.status) }}</span></h1>
   <div class="row no-print">
     <a class="btn ghost" href="{{ url_for('cattle_form', cid=c.id) }}">{{ _('Edit') }}</a>
@@ -11,9 +12,18 @@
     {% endif %}
   </div>
 </div>
+{# Tabs: app.js shows one panel at a time; without it (and when printing) all panels show, one under another #}
+<div class="tabbar no-print" role="tablist" aria-label="{{ _('About this animal') }}">
+  <a role="tab" id="tab-overview" href="#overview" aria-controls="overview" aria-selected="true">{{ _('Overview') }}</a>
+  {% for kind in records if kind != 'milk' or c.sex == 'Female' %}
+  <a role="tab" id="tab-{{ kind }}" href="#{{ kind }}" aria-controls="{{ kind }}" aria-selected="false" tabindex="-1">{{ _(tab_names[kind]) }} <span class="count">{{ data[kind]|length }}{{ '+' if data[kind]|length == 10 }}</span></a>
+  {% endfor %}
+</div>
+
+<section class="tabpanel" id="overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
 <div class="card profile-head">
   {% if c.photo %}<img class="photo" src="{{ url_for('static', filename='uploads/' + c.photo) }}" alt="{{ _('Photo of {tag}', tag=c.tag_no) }}">
-  {% else %}<div class="photo">🐄</div>{% endif %}
+  {% else %}<div class="photo" role="img" aria-label="{{ _('No photo') }}">🐄</div>{% endif %}
   <dl class="facts">
     <dt>{{ _('Type') }}</dt><dd>{{ _(c.species) }}, {{ _(c.sex) }}</dd>
     <dt>{{ _('Breed') }}</dt><dd>{{ c.breed|dv or '—' }}</dd>
@@ -28,27 +38,29 @@
   </dl>
   {% if c.notes %}<p class="full" style="flex-basis:100%">{{ c.notes|dv }}</p>{% endif %}
 </div>
-<div class="grid">
-  <div class="card wide">
-    <div class="row spread"><h2>{{ _('Tasks') }}</h2>
-      <span class="no-print"><a class="btn sm" href="{{ url_for('task_form', cattle_id=c.id, back=request.path) }}">+ {{ _('Task') }}</a>
-      <a class="small" href="{{ url_for('tasks') }}">{{ _('All tasks') }}</a></span></div>
-    {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
-    {% else %}<p class="muted small">{{ _('No open tasks for this animal.') }}</p>{% endif %}
-  </div>
-{% for kind, cfg in records.items() %}
-  {% if kind != 'milk' or c.sex == 'Female' %}
-  <div class="card">
-    <div class="row spread"><h2>{{ _(cfg.title) }}</h2>
-      <span class="no-print"><a class="btn sm" href="{{ url_for('record_form', kind=kind, cattle_id=c.id, back=request.path) }}">+ {{ _('Add') }}</a>
-      <a class="small" href="{{ url_for('records', kind=kind, cattle_id=c.id) }}">{{ _('All') }}</a></span></div>
-    {% set rows = data[kind] %}
-    {% if rows %}<div class="table-wrap"><table>
-      <tr>{% for f in cfg.fields if f[0] in cfg.list %}<th class="{{ 'n' if f[2] == 'number' }}">{{ _(f[1]|replace(' (blank = auto)', '')) }}</th>{% endfor %}</tr>
-      {% for r in rows %}<tr>{% for f in cfg.fields if f[0] in cfg.list %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">{% if f[2] == 'number' %}{{ r[f[0]]|num }}{% elif r[f[0]] is not none %}{{ r[f[0]]|dv }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
-    </table></div>{% else %}<p class="muted small">{{ _('No records yet.') }}</p>{% endif %}
-  </div>
-  {% endif %}
-{% endfor %}
+<div class="card">
+  <div class="card-head"><h2>{{ _('Tasks') }}</h2>
+    <span class="row no-print"><a class="btn sm" href="{{ url_for('task_form', cattle_id=c.id, back=request.path) }}">+ {{ _('Task') }}</a>
+    <a class="view-all" href="{{ url_for('tasks') }}">{{ _('All tasks') }} →</a></span></div>
+  {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
+  {% else %}<p class="muted small">{{ _('No open tasks for this animal.') }}</p>{% endif %}
 </div>
+</section>
+
+{% for kind, cfg in records.items() if kind != 'milk' or c.sex == 'Female' %}
+<section class="tabpanel" id="{{ kind }}" role="tabpanel" aria-labelledby="tab-{{ kind }}" tabindex="0">
+<div class="card">
+  <div class="card-head"><h2>{{ _(cfg.title) }}</h2>
+    <span class="row no-print"><a class="btn sm" href="{{ url_for('record_form', kind=kind, cattle_id=c.id, back=request.path ~ '#' ~ kind) }}">+ {{ _('Add') }}</a>
+    <a class="view-all" href="{{ url_for('records', kind=kind, cattle_id=c.id) }}" aria-label="{{ _('View all') }}: {{ _(cfg.title) }}">{{ _('View all') }} →</a></span></div>
+  {% set rows = data[kind] %}
+  {% if rows %}<div class="table-wrap"><table>
+    <thead><tr>{% for f in cfg.fields if f[0] in cfg.list %}<th class="{{ 'n' if f[2] == 'number' }}">{{ _(f[1]|replace(' (blank = auto)', '')) }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in rows %}<tr>{% for f in cfg.fields if f[0] in cfg.list %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">{% if f[2] == 'number' %}{{ r[f[0]]|num }}{% elif r[f[0]] is not none %}{{ r[f[0]]|dv }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% if rows|length == 10 %}<p class="small muted">{{ _('The latest 10.') }} <a href="{{ url_for('records', kind=kind, cattle_id=c.id) }}">{{ _('View all') }}</a></p>{% endif %}
+  {% else %}<p class="muted small">{{ _('No records yet.') }}</p>{% endif %}
+</div>
+</section>
+{% endfor %}
 {% endblock %}

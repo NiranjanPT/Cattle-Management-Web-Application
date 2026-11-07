@@ -19,7 +19,8 @@
 <div class="stack" style="display:grid">
   <label>{{ _('Phone') }} * <input type="tel" name="phone" inputmode="tel" minlength="10" maxlength="20" autocomplete="tel"
     value="{{ (form.phone if form else user.phone) or '' }}" placeholder="98220 00000" required></label>
-  <label class="full">{{ _('Delivery address') }} * <textarea name="address" autocomplete="street-address" required>{{ (form.address if form else user.address) or '' }}</textarea></label>
+  <label class="full">{{ _('Delivery address') }} * <textarea name="address" autocomplete="street-address" required>{{ form.address if form else ([user.address, ' - '.join([user.city or '', user.pincode or '']|select)]|select|join('
+')) }}</textarea></label>
   <label class="full">{{ _('Notes (delivery time, etc.)') }} <textarea name="notes">{{ form.notes if form else '' }}</textarea></label>
   <div class="full actions"><button name="action" value="checkout">{{ _('Place order') }} · {{ total|money }}</button> <span class="small muted">{{ _('Pay on delivery. Phone and address are required.') }}</span></div>
 </div></div>

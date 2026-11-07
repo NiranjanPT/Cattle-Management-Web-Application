@@ -70,7 +70,9 @@ def farm_pages(f):
              "/admin/products", "/admin/products/new", f"/admin/products/{f['product']}/edit"]
     for kind, rid in f["rid"].items():
         pages += [f"/records/{kind}", f"/records/{kind}/new", f"/records/{kind}/{rid}/edit",
-                  f"/records/{kind}?cattle_id={f['cow']}&from={T - timedelta(days=30)}&to={T}"]
+                  f"/records/{kind}?cattle_id={f['cow']}&from={T - timedelta(days=30)}&to={T}",
+                  f"/records/{kind}/export.xlsx", f"/import?kind={kind}", f"/import/template/{kind}.xlsx"]
+    pages += ["/import", "/import/template/cattle.xlsx", "/cattle/export.xlsx", "/cattle/export.xlsx?status=&q=gir"]
     return pages
 
 
@@ -146,7 +148,7 @@ def test_customer_sees_shop_pages_only(fresh_db, farm):
 def test_dates_and_numbers_render(fresh_db, farm):
     b = login(fresh_db, "admin", "admin123")
     dash = b.get("/dashboard").get_data(as_text=True)
-    assert "9 L</div>" in dash  # milk today: 4.5 + 4.5
+    assert '<span class="v">9 L</span>' in dash  # milk today: 4.5 + 4.5
     assert f"{T:%d %b}: 9 L" in dash  # 14-day chart reads the date-keyed totals
     assert f"Overdue {T - timedelta(days=1)}" in dash
     vacc = b.get("/records/vaccinations").get_data(as_text=True)
@@ -161,7 +163,7 @@ def test_dates_and_numbers_render(fresh_db, farm):
     users = b.get("/admin/users").get_data(as_text=True)
     assert f"<td>{datetime.now(ZoneInfo('Asia/Kolkata')).date()}</td>" in users
     orders = b.get("/admin/orders").get_data(as_text=True)
-    assert f"<td>{T - timedelta(days=1)} 08:15:00</td>" in orders  # farm time, no +05:30
+    assert f"<td>{T - timedelta(days=1):%d %b %Y}, 8:15 AM</td>" in orders  # farm time, 12-hour clock
     assert "+0" not in orders
 
 

@@ -1,22 +1,35 @@
 {% extends "base.html" %}{% block title %}{{ _('Users') }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>{{ _('Users') }}</h1><a class="btn" href="{{ url_for('user_form') }}">+ {{ _('Add staff member') }}</a></div>
-<div class="tabs">
+<div class="row spread page-head"><h1>{{ _('Users') }}</h1><a class="btn" href="{{ url_for('user_form') }}">+ {{ _('Add staff member') }}</a></div>
+<nav class="tabs no-print" aria-label="{{ _('Role') }}">
   {% for r, l in [('', 'All'), ('admin', 'Admins'), ('staff', 'Farm staff'), ('customer', 'Customers')] %}
-  <a href="{{ url_for('users', role=r) }}" class="{{ 'on' if role == r }}">{{ _(l) }}</a>{% endfor %}
-</div>
-<div class="card table-wrap"><table>
-<tr><th>{{ _('Name') }}</th><th>{{ _('Username') }}</th><th>{{ _('Role') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email') }}</th><th>{{ _('Status') }}</th><th>{{ _('Joined') }}</th><th></th></tr>
+  <a href="{{ url_for('users', role=r or None, q=s or None, city=city or None, pincode=pin or None, sort=sort or None) }}" class="{{ 'on' if role == r }}"{% if role == r %} aria-current="page"{% endif %}>{{ _(l) }}</a>{% endfor %}
+</nav>
+<form class="row card filters no-print" method="get" role="search">
+  {% if role %}<input type="hidden" name="role" value="{{ role }}">{% endif %}
+  <label>{{ _('Search') }} <input type="search" name="q" value="{{ s }}" placeholder="{{ _('Name, username, phone or email') }}"></label>
+  {% include "_place_filters.html" %}
+  <label>{{ _('Sort by') }} <select name="sort">{% for k, v in sorts.items() %}<option value="{{ k }}" {{ 'selected' if sort == k }}>{{ _(v[0]) }}</option>{% endfor %}</select></label>
+  <button>{{ _('Filter') }}</button>
+  {% if s or city or pin or sort %}<a class="btn ghost" href="{{ url_for('users', role=role or None) }}">{{ _('Clear') }}</a>{% endif %}
+  <span class="muted small">{{ _('{n} accounts', n=pager.total) }}</span>
+</form>
+<div class="card table-wrap scroll" tabindex="0" role="region" aria-label="{{ _('Users') }}"><table>
+<thead><tr><th>{{ _('Name') }}</th><th>{{ _('Username') }}</th><th>{{ _('Role') }}</th><th>{{ _('City') }}</th><th>{{ _('Pincode') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email') }}</th><th>{{ _('Status') }}</th><th>{{ _('Joined') }}</th><th><span class="sr-only">{{ _('Actions') }}</span></th></tr></thead>
+<tbody>
 {% for u in users %}
-<tr><td>{{ u.full_name|dv }}</td><td>{{ u.username }}</td><td>{{ _(u.role|title) }}</td><td>{{ u.phone or '' }}</td>
+<tr><td>{{ u.full_name|dv }}</td><td>{{ u.username }}</td><td>{{ _(u.role|title) }}</td>
+<td>{% if u.city %}<a href="{{ url_for('users', role=role or None, city=u.city) }}" title="{{ _('Everyone in {city}', city=u.city|dv) }}">{{ u.city|dv }}</a>{% endif %}</td>
+<td class="nw">{{ u.pincode or '' }}</td><td>{{ u.phone or '' }}</td>
 <td>{{ u.email or '' }}</td><td>{% if u.active %}<span class="badge ok">{{ _('Active') }}</span>{% else %}<span class="badge bad">{{ _('Disabled') }}</span>{% endif %}</td>
 <td>{{ u.created_at|dt("%Y-%m-%d") }}</td>
-<td class="acts no-print"><a href="{{ url_for('user_form', uid=u.id) }}">{{ _('Edit') }}</a>
+<td class="acts no-print"><a href="{{ url_for('user_form', uid=u.id) }}" aria-label="{{ _('Edit') }} {{ u.full_name|dv }}">{{ _('Edit') }}</a>
   {% if u.id != user.id %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}"
     onsubmit="return confirm({{ _('Remove the account of {name}? This cannot be undone.', name=u.full_name|dv)|tojson|forceescape }})">
     <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger sm" aria-label="{{ _('Remove') }} {{ u.full_name|dv }}">{{ _('Remove') }}</button></form>{% endif %}</td></tr>
-{% endfor %}
-</table></div>
+{% else %}<tr><td colspan="10" class="muted">{{ _('No users found.') }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% include "_pager.html" %}
 <p class="small muted">{{ _('Admins manage everything including users. Farm staff manage cattle, records, products and orders. Customers can only shop and see the calendar.') }}
   {{ _('A customer with orders cannot be removed, so the order history stays complete; untick Account active instead.') }}</p>
 {% endblock %}

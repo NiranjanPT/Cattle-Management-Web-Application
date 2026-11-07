@@ -29,8 +29,9 @@ with app.app_context(), get_db().transaction():
         raise SystemExit("Database already has cattle; demo data not added.")
 
     for u, name, role in [("staff", "Ramesh Patil", "staff"), ("customer", "Sunita Deshmukh", "customer")]:
-        ex("INSERT INTO users (username, password_hash, full_name, phone, address, role) VALUES (%s,%s,%s,%s,%s,%s)",
-           (u, generate_password_hash(u + "123"), name, "98220 00000", "Kothrud, Pune", role))
+        ex("INSERT INTO users (username, password_hash, full_name, phone, address, city, pincode, role)"
+           " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+           (u, generate_password_hash(u + "123"), name, "98220 00000", "Kothrud", "Pune", "411038", role))
 
     herd = [("GIR-001", "Kamdhenu", "Cow", "Gir", "Female", 2100, "Red with white patches"),
             ("GIR-002", "Gauri", "Cow", "Gir", "Female", 1700, "Deep red"),

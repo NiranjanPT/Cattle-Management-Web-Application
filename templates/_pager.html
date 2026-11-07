@@ -1,0 +1,13 @@
+{# Page links under a list (25 rows a page). Needs `pager` from paged() in app.py. #}
+{% if pager and pager.total %}<nav class="pager no-print" aria-label="{{ _('Pages') }}">
+  <span class="muted">{{ _('Showing {first}–{last} of {n}', first=pager.first, last=pager.last, n='{:,}'.format(pager.total)) }}</span>
+  {% if pager.pages > 1 %}<ul>
+    {% if pager.page > 1 %}<li><a href="{{ page_url(pager.page - 1) }}" rel="prev">← {{ _('Previous') }}</a></li>{% endif %}
+    {% for n in page_numbers(pager) %}<li>
+      {%- if n is none %}<span class="gap" aria-hidden="true">…</span>
+      {%- elif n == pager.page %}<a class="on" href="{{ page_url(n) }}" aria-current="page" aria-label="{{ _('Page {n}', n=n) }}">{{ n }}</a>
+      {%- else %}<a href="{{ page_url(n) }}" aria-label="{{ _('Page {n}', n=n) }}">{{ n }}</a>{% endif -%}
+    </li>{% endfor %}
+    {% if pager.page < pager.pages %}<li><a href="{{ page_url(pager.page + 1) }}" rel="next">{{ _('Next') }} →</a></li>{% endif %}
+  </ul>{% endif %}
+</nav>{% endif %}

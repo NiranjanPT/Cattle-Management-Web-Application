@@ -1,0 +1,10 @@
+{# Address, city and pincode: on sign-up, My profile and the admin's user form. Needs `form` (the values to show)
+   and `need` (true: all three required, as for a customer). City and pincode let the admin filter customers. #}
+{% set need = need if need is defined else true %}
+<label class="full">{{ _('Address (house, street, area)') }}{{ ' *' if need }}
+  <textarea name="address" autocomplete="street-address" {{ 'required' if need }}>{{ form.address or '' }}</textarea></label>
+<label>{{ _('City') }}{{ ' *' if need }}
+  <input name="city" value="{{ form.city or '' }}" autocomplete="address-level2" placeholder="{{ _('e.g. Sangli') }}" {{ 'required' if need }}></label>
+<label>{{ _('Pincode') }}{{ ' *' if need }}
+  <input name="pincode" value="{{ form.pincode or '' }}" inputmode="numeric" pattern="[1-9][0-9]{5}" maxlength="6"
+         autocomplete="postal-code" placeholder="416416" title="{{ _('6 digits, like 416416') }}" {{ 'required' if need }}></label>

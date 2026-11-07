@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}{{ _('Import finished') }}{% endblock %}
+{% block content %}
+<h1>{{ _('Import finished') }}: {{ _(spec.title) }}</h1>
+<div class="card">
+  <p class="import-result"><b>{{ _('{n} imported, {m} skipped', n=imported, m=skipped) }}</b> <span class="muted">({{ file }})</span></p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('cattle_list') if spec.kind == 'cattle' else url_for('records', kind=spec.kind) }}">{{ _('Open') }} {{ _(spec.title) }}</a>
+    {% if skipped %}<form method="post" action="{{ url_for('import_skipped') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="payload" value="{{ skipped_payload }}">
+      <button class="ghost">⬇ {{ _('Download the skipped rows (CSV)') }}</button></form>{% endif %}
+    <a class="btn ghost" href="{{ url_for('import_page', kind=spec.kind) }}">{{ _('Import another file') }}</a>
+  </div>
+  {% if skipped %}<p class="muted small">{{ _('The CSV has each skipped row with the reason in the last column. Fix the rows and import the file again: the Row and Problems columns are left out.') }}</p>{% endif %}
+</div>
+{% endblock %}

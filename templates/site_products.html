@@ -1,0 +1,22 @@
+{% extends "site.html" %}
+{% block title %}{{ _('Our products') }}{% endblock %}
+{% block site_content %}
+<section class="block" aria-labelledby="products-title"><div class="wrap">
+  <h1 id="products-title" class="page-title">{{ _('Our products') }}</h1>
+  <p class="lead">{{ _('Fresh from our desi cows. You pay when your order is delivered.') }}</p>
+  {% if products %}
+  <div class="products">
+  {% for p in products %}
+    <div class="card product">
+      <span class="badge">{{ _(p.category) }}</span>
+      <h2 class="product-name">{{ p.name|dv }}</h2>
+      {% if p.description %}<p class="small muted">{{ p.description|dv }}</p>{% endif %}
+      <div class="price">{{ p.price|money }} <span class="small muted">/ {{ p.unit|dv }}</span></div>
+      {% if p.stock > 0 %}<a class="btn" href="{{ url_for('shop') if user else url_for('login', next=url_for('shop')) }}" aria-label="{{ _('Order') }}: {{ p.name|dv }}">{{ _('Order') }}</a>
+      {% else %}<span class="badge bad">{{ _('Out of stock') }}</span>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">{{ _('Our product list is coming soon.') }}</p>{% endif %}
+</div></section>
+{% endblock %}

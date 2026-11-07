@@ -1,0 +1,5 @@
+{# Messages after an action. A live region, so screen readers announce them (app.js puts them in after the page
+   loads, which is when a screen reader notices); errors are alerts. #}
+<div class="flashes" role="status" aria-live="polite">
+{%- for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}"{% if cat == 'error' %} role="alert"{% endif %}>{{ msg }}</div>{% endfor -%}
+</div>

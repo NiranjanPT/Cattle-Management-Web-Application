@@ -29,8 +29,12 @@ def _template_texts():
 
 
 def _code_texts():
-    s = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
-    return {"".join(re.findall(r'"([^"]*)"', m)) for m in re.findall(r'tr\(((?:"[^"]*"\s*)+)', s)}
+    """Texts passed to tr() in app.py and services/bulk_io.py, and bulk_io's messages, msg()."""
+    found = set()
+    for name in ("app.py", os.path.join("services", "bulk_io.py")):
+        s = open(os.path.join(ROOT, name), encoding="utf-8").read()
+        found |= {"".join(re.findall(r'"([^"]*)"', m)) for m in re.findall(r'\b(?:tr|msg)\(((?:"[^"]*"\s*)+)', s)}
+    return found
 
 
 def _data_texts(app):
@@ -43,6 +47,7 @@ def _data_texts(app):
         out |= {cfg["title"], cfg["one"], cfg["one"] + "s"}
         for _, label, _, options in cfg["fields"]:
             out |= {label, label.replace(" (blank = auto)", ""), *(options or [])}
+    out |= {label for label, _ in app.USER_SORTS.values()}
     out |= {*panchang.TITHIS, *panchang.WEEKDAYS, *panchang.RASHIS}
     out |= {n[i] for n in panchang.NAKSHATRAS for i in (2, 3, 4)}
     out |= {a[3] for a in panchang.AGNIVAS.values()}
@@ -59,6 +64,17 @@ def test_placeholders_match():
     assert [k for k, v in i18n.MR.items() if fields(k) != fields(v)] == []
 
 
+@pytest.mark.parametrize("hour, minute, en, mr", [
+    (0, 5, "12:05 AM", "रात्री 12:05"), (4, 7, "4:07 AM", "पहाटे 4:07"), (6, 31, "6:31 AM", "सकाळी 6:31"),
+    (11, 59, "11:59 AM", "सकाळी 11:59"), (12, 0, "12:00 PM", "दुपारी 12:00"), (14, 15, "2:15 PM", "दुपारी 2:15"),
+    (18, 30, "6:30 PM", "सायंकाळी 6:30"), (22, 13, "10:13 PM", "रात्री 10:13"), (23, 59, "11:59 PM", "रात्री 11:59"),
+])
+def test_12_hour_clock(hour, minute, en, mr):
+    from datetime import time
+    assert i18n.clock_text(time(hour, minute), "en") == en
+    assert i18n.clock_text(time(hour, minute), "mr") == mr
+
+
 def test_marathi_dates():
     d = date(2026, 10, 23)  # a Friday
     assert i18n.date_text(d, "%a %d %b %Y", "mr") == "शुक्र 23 ऑक्टो 2026"
@@ -69,7 +85,8 @@ def test_website_for_visitors(fresh_db):
     b = Browser(fresh_db.app.test_client())
     page = b.get("/").get_data(as_text=True)
     assert "VrushaA2 Dairy Tech" in page and "From sanskar to prosperity" in page
-    assert "brand/logo-full.svg" in page and 'href="/login"' in page and 'href="/register"' in page
+    assert "brand/logo-full.svg" in page and 'href="/login"' in page and 'href="/login?next=/shop"' in page
+    assert 'href="/register"' in b.get("/how-to-order").get_data(as_text=True)  # signing up is explained there
     assert "Gaushala" not in page
     assert b.get("/static/brand/logo-mark.svg").status_code == 200
 
@@ -88,7 +105,7 @@ def test_switch_to_marathi_and_back(fresh_db):
     page = b.get("/login").get_data(as_text=True)
     assert '<html lang="mr">' in page and "वापरकर्ता नाव" in page and "वृषाA2 डेरीटेक" in page
     home = b.get("/").get_data(as_text=True)
-    assert "संस्कारातून समृद्धीकडे" in home and "आमची मूल्ये" in home
+    assert "संस्कारातून समृद्धीकडे" in home and "आमची मूल्ये" in b.get("/about").get_data(as_text=True)
     b.get("/lang/en")
     assert "Username" in b.get("/login").get_data(as_text=True)
 

@@ -1,16 +1,27 @@
-{% extends "base.html" %}{% block title %}{{ _('Orders') }}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Customer orders') if manage else _('My orders') }}{% endblock %}
 {% block content %}
 <h1>{{ _('Customer orders') if manage else _('My orders') }}</h1>
-{% if manage %}<div class="tabs"><a href="{{ url_for('manage_orders') }}" class="{{ 'on' if not status }}">{{ _('All') }}</a>
-{% for s in statuses %}<a href="{{ url_for('manage_orders', status=s) }}" class="{{ 'on' if status == s }}">{{ _(s) }}</a>{% endfor %}</div>{% endif %}
-<div class="card table-wrap"><table>
-<tr><th>{{ _('Order') }}</th><th>{{ _('Date') }}</th>{% if manage %}<th>{{ _('Customer') }}</th>{% endif %}<th class="n">{{ _('Total') }}</th><th>{{ _('Status') }}</th>{% if manage %}<th>{{ _('Change status') }}</th>{% endif %}</tr>
+{% if manage %}
+<nav class="tabs no-print" aria-label="{{ _('Status') }}"><a href="{{ url_for('manage_orders', q=s or None, city=city or None, pincode=pin or None) }}" class="{{ 'on' if not status }}"{% if not status %} aria-current="page"{% endif %}>{{ _('All') }}</a>
+{% for st in statuses %}<a href="{{ url_for('manage_orders', status=st, q=s or None, city=city or None, pincode=pin or None) }}" class="{{ 'on' if status == st }}"{% if status == st %} aria-current="page"{% endif %}>{{ _(st) }}</a>{% endfor %}</nav>
+<form class="row card filters no-print" method="get" role="search">
+  {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  <label>{{ _('Search') }} <input type="search" name="q" value="{{ s }}" placeholder="{{ _('Order number or customer') }}"></label>
+  {% include "_place_filters.html" %}
+  <button>{{ _('Filter') }}</button>
+  {% if s or city or pin %}<a class="btn ghost" href="{{ url_for('manage_orders', status=status or None) }}">{{ _('Clear') }}</a>{% endif %}
+</form>
+{% endif %}
+<div class="card table-wrap scroll" tabindex="0" role="region" aria-label="{{ _('Orders') }}"><table>
+<thead><tr><th>{{ _('Order') }}</th><th>{{ _('Date') }}</th>{% if manage %}<th>{{ _('Customer') }}</th><th>{{ _('City') }}</th>{% endif %}<th class="n">{{ _('Total') }}</th><th>{{ _('Status') }}</th>{% if manage %}<th>{{ _('Change status') }}</th>{% endif %}</tr></thead>
+<tbody>
 {% for o in rows %}<tr><td><a href="{{ url_for('order_detail', oid=o.id) }}">#{{ o.id }}</a></td><td>{{ o.created_at|dt }}</td>
-{% if manage %}<td>{{ o.full_name|dv }}</td>{% endif %}<td class="n">{{ o.total|money }}</td>
+{% if manage %}<td>{{ o.full_name|dv }}</td><td>{{ o.city|dv if o.city }}{% if o.pincode %} <span class="muted small">{{ o.pincode }}</span>{% endif %}</td>{% endif %}<td class="n">{{ o.total|money }}</td>
 <td><span class="badge {{ 'ok' if o.status == 'Delivered' else 'bad' if o.status == 'Cancelled' else 'warn' if o.status == 'Pending' else '' }}">{{ _(o.status) }}</span></td>
 {% if manage %}<td><form method="post" action="{{ url_for('order_status', oid=o.id) }}" class="row">
 <input type="hidden" name="csrf" value="{{ csrf_token }}">
-<select name="status">{% for s in statuses %}<option value="{{ s }}" {{ 'selected' if o.status == s }}>{{ _(s) }}</option>{% endfor %}</select><button class="sm">{{ _('Save') }}</button></form></td>{% endif %}
-</tr>{% else %}<tr><td colspan="6" class="muted">{{ _('No orders yet.') }}</td></tr>{% endfor %}
-</table></div>
+<select name="status" aria-label="{{ _('Status of order #{n}', n=o.id) }}">{% for st in statuses %}<option value="{{ st }}" {{ 'selected' if o.status == st }}>{{ _(st) }}</option>{% endfor %}</select><button class="sm">{{ _('Save') }}</button></form></td>{% endif %}
+</tr>{% else %}<tr><td colspan="7" class="muted">{{ _('No orders found.') if manage and (s or city or pin or status) else _('No orders yet.') }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% include "_pager.html" %}
 {% endblock %}

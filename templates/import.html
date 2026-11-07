@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}{{ _('Import from a file') }}{% endblock %}
+{% block content %}
+<h1>{{ _('Import from a file') }}</h1>
+<div class="card"><form method="post" enctype="multipart/form-data" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>{{ _('What the file holds') }} <select name="kind">
+    {% for k, s in specs.items() %}<option value="{{ k }}" {{ 'selected' if k == spec.kind }}>{{ _(s.title) }}</option>{% endfor %}</select></label>
+  <label>{{ _('File (.csv or .xlsx, up to 5 MB)') }} <input type="file" name="file" accept=".csv,.xlsx" required></label>
+  <p class="full muted small">{{ _('Animals are matched by their tag number. Every row is checked first and you see a preview: nothing is saved until you click Confirm import.') }}
+    {{ _('Up to {n} rows per file.', n=max_rows) }}</p>
+  <div class="full actions"><button>{{ _('Check the file') }}</button>
+    <a class="btn ghost" href="{{ url_for('cattle_list') if spec.kind == 'cattle' else url_for('records', kind=spec.kind) }}">{{ _('Cancel') }}</a></div>
+</form></div>
+<div class="card">
+  <h2>{{ _('Download template') }}</h2>
+  <p class="muted small">{{ _('An Excel file with the right column names, an example row and an Instructions sheet. Fill it in, then upload it here as .xlsx or as CSV UTF-8.') }}</p>
+  <div class="actions">{% for k, s in specs.items() %}
+    <a class="btn {{ '' if k == spec.kind else 'ghost' }}" href="{{ url_for('import_template', kind=k) }}">⬇ {{ _(s.title) }}</a>{% endfor %}</div>
+</div>
+{% endblock %}

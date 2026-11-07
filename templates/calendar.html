@@ -37,9 +37,17 @@
       {% set nk = nakshatras[d.nakshatra_index] %}
       <div class="nk" title="{{ _(nk[3]) }} · {{ _('ruled by {planet}', planet=_(nk[2])) }}">{{ d.nakshatra_dev if lang == 'mr' else d.nakshatra }} {{ d.pada }}</div>
       <div class="muted">{% if lang != 'mr' %}{{ d.nakshatra_dev }} · {% endif %}{{ _('Moon in {rashi}', rashi=_(d.moon_rashi)) }}</div>
-      <div class="agni {{ 'good' if d.agni.good_for_havan else 'bad' }}" title="{{ _(d.agni.note) }}">🔥 {{ _('Agni') }}: {{ d.agni.devanagari if lang == 'mr' else d.agni.place ~ ' ' ~ d.agni.devanagari }}</div>
-      {% if d.agni_nakshatra %}<div class="agni bad" title="{{ _('Sun from Bharani pada 3 to Rohini pada 1') }}">☀ {{ _('Agni Nakshatra (Kathiri)') }}</div>{% endif %}
-      <div class="muted">{{ _('Sunrise') }} {{ d.sunrise.strftime('%H:%M') }}</div>
+      {# Agni moves when the tithi changes. Every period shows its start and end time (12-hour clock), from this
+         day's sunrise to the next sunrise; a time after midnight shows its date, so none can be read as the wrong day #}
+      <div class="agni-times"><div class="agni-head">🔥 {{ _('Agni') }}</div>
+      {% for p in agni_periods(d.date) %}
+        <div class="agni {{ 'good' if p.agni.good_for_havan else 'bad' }}" title="{{ _(p.agni.note) }}"><b>{{ p.agni.devanagari if lang == 'mr' else p.agni.place }}</b>
+          <span class="when"><span class="t">{{ p.start|clock(d.date) }}</span> {{ _('to') }} <span class="t">{{ p.end|clock(d.date) }}</span></span></div>
+      {% endfor %}</div>
+      {% set ank = agni_nakshatra_change(d.date) %}
+      {% if ank %}<div class="agni bad" title="{{ _('Sun from Bharani pada 3 to Rohini pada 1') }}">☀ {{ _('Agni Nakshatra begins') if ank[0] == 'begins' else _('Agni Nakshatra ends') }}: <span class="t">{{ ank[1]|clock(d.date) }}</span></div>
+      {% elif d.agni_nakshatra %}<div class="agni bad" title="{{ _('Sun from Bharani pada 3 to Rohini pada 1') }}">☀ {{ _('Agni Nakshatra (Kathiri)') }}</div>{% endif %}
+      <div class="muted">{{ _('Sunrise') }} {{ d.sunrise|clock }}</div>
       {% set evs = events.get(d.date.isoformat(), []) %}{% if evs|length > 2 %}<details class="ev"><summary>● {{ _('{n} farm events', n=evs|length) }}</summary>{% for e in evs %}<div>{{ event(e) }}</div>{% endfor %}</details>
       {% else %}{% for e in evs %}<div class="ev">● {{ event(e) }}</div>{% endfor %}{% endif %}
     </div>
@@ -47,7 +55,9 @@
   </div>
   <p class="small muted">{{ _('Tithi and nakshatra are shown as they stand at sunrise in {place}, calculated with the PyEphem astronomy library and the Lahiri ayanamsa; on days when a tithi or nakshatra changes near sunrise, check a local panchang for muhurta timing.', place=_(location)) }}
   {{ _('Agni is the Agnivas used for havan: from the tithi and weekday, Agni is on earth (Prithvi, good for havan), in the sky (Akasha) or in the underworld (Patala), when havan is not advised.') }}
+  {{ _('Agni moves when the tithi changes. Each day shows every place Agni stays from sunrise on that day to the next sunrise, with the exact start and end time of each (12-hour clock, farm time); a time after midnight also shows its date.') }}
   {{ _('Days with an orange border fall in Agni Nakshatra (Kathiri), when the sun moves from Bharani pada 3 to Rohini pada 1, about 4 to 28 May.') }}
+  {{ _('Its first and last days show the time it begins and ends.') }}
   {% if user.role != 'customer' %} {{ _('Red lines are farm events: vaccines due, expected calvings and scheduled tasks. Use + on a day to schedule a task.') }}{% endif %}</p>
 </div>
 <div class="card table-wrap"><h2>{{ _('The year at a glance') }}</h2><table>

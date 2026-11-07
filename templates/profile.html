@@ -9,7 +9,7 @@
   <label>{{ _('Full name') }} <input name="full_name" value="{{ user.full_name }}" required></label>
   <label>{{ _('Phone') }} <input name="phone" value="{{ user.phone or '' }}"></label>
   <label>{{ _('Email') }} <input name="email" type="email" value="{{ user.email or '' }}"></label>
-  <label class="full">{{ _('Address') }} <textarea name="address">{{ user.address or '' }}</textarea></label>
+  {% set form, need = user, user.role == 'customer' %}{% include "_address_fields.html" %}
   <h2 class="full" style="margin-top:8px">{{ _('Change password') }}</h2>
   <label>{{ _('Current password') }} <input name="old_password" type="password"></label>
   <label>{{ _('New password') }} <input name="new_password" type="password" minlength="6"></label>

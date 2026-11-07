@@ -1,6 +1,7 @@
 {# Task list shared by the Tasks page, the dashboard and the animal profile. Needs `rows` and `back`. #}
 <div class="table-wrap"><table>
-<tr><th>{{ _('Due') }}</th><th>{{ _('Task') }}</th><th>{{ _('Animals') }}</th><th>{{ _('Assigned to') }}</th><th></th></tr>
+<thead><tr><th>{{ _('Due') }}</th><th>{{ _('Task') }}</th><th>{{ _('Animals') }}</th><th>{{ _('Assigned to') }}</th><th><span class="sr-only">{{ _('Actions') }}</span></th></tr></thead>
+<tbody>
 {% for t in rows %}
 {% set late = t.status == 'Open' and t.due_date < today %}
 <tr class="{{ 'task-done' if t.status == 'Done' }}">
@@ -18,10 +19,10 @@
       {% else %}
       <form method="post" action="{{ url_for('task_done', tid=t.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="sm">{{ _('Done') }}</button></form>
       {% endif %}
-      <a class="small" href="{{ url_for('task_form', tid=t.id, back=back) }}">{{ _('Edit') }}</a>
+      <a href="{{ url_for('task_form', tid=t.id, back=back) }}" aria-label="{{ _('Edit') }} {{ t.title|dv }}">{{ _('Edit') }}</a>
     {% endif %}
     <form method="post" action="{{ url_for('task_delete', tid=t.id) }}" onsubmit="return confirm({{ _('Delete this task?')|tojson|forceescape }})"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="back" value="{{ back }}"><button class="danger sm" aria-label="{{ _('Delete task') }} {{ t.title|dv }}">✕</button></form>
   </td>
 </tr>
 {% endfor %}
-</table></div>
+</tbody></table></div>

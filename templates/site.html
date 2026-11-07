@@ -1,0 +1,13 @@
+{# The public website's inner pages (About us, Products, How to order, Contact): Back, breadcrumbs, a footer. #}
+{% extends "base.html" %}
+{% block body_class %}site-page{% endblock %}
+{% block main %}
+<main id="content" class="site" tabindex="-1">
+<div class="wrap site-top">{% include "_pagebar.html" %}{% include "_flashes.html" %}</div>
+{% block site_content %}{% endblock %}
+</main>
+<footer class="site-foot"><div class="wrap row spread">
+  <span>© {{ today.year }} {{ _(COMPANY) }} · {{ _(TAGLINE) }}</span>
+  <span><a href="{{ url_for('login') }}">{{ _('Staff and customer login') }}</a></span>
+</div></footer>
+{% endblock %}

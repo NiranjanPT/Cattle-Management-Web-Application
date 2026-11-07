@@ -179,3 +179,9 @@ CREATE TABLE text_translations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (source, lang)
 );
+
+-- Migration 0004: city and pincode of every account (customers are filtered and sorted by them)
+ALTER TABLE users ADD COLUMN city TEXT;
+ALTER TABLE users ADD COLUMN pincode TEXT CHECK (pincode ~ '^[1-9][0-9]{5}$');
+CREATE INDEX idx_users_city ON users (lower(city));
+CREATE INDEX idx_users_pincode ON users (pincode);

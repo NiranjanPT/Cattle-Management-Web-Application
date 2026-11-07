@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}{{ _(cfg.title) }}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ _('Edit {what}', what=_(cfg.one)) if r else _('Add {what}', what=_(cfg.one)) }}{% endblock %}
 {% block content %}
 <h1>{{ _('Edit {what}', what=_(cfg.one)) if r else _('Add {what}', what=_(cfg.one)) }}</h1>
 {% if task %}<div class="flash ok">{{ _('Completing task {title} (due {date}).', title=task.title|dv, date=task.due_date|fdate('%d %b %Y')) }}

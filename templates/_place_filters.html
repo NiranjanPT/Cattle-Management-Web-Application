@@ -1,0 +1,6 @@
+{# City and pincode filters of a list (Users, Customer orders). Needs `cities` [(city, n)], `city` and `pin`.
+   Part of a pincode finds every pincode starting with it: 416 is the whole district. #}
+<label>{{ _('City') }} <select name="city"><option value="">{{ _('All cities') }}</option>
+  {% for c in cities %}<option value="{{ c.city }}" {{ 'selected' if city and city|lower == c.city|lower }}>{{ c.city|dv }} ({{ c.n }})</option>{% endfor %}</select></label>
+<label>{{ _('Pincode') }} <input name="pincode" value="{{ pin }}" inputmode="numeric" maxlength="6" pattern="[0-9]{1,6}"
+  placeholder="{{ _('e.g. 416 or 416416') }}" title="{{ _('A whole pincode, or its first digits for an area') }}"></label>

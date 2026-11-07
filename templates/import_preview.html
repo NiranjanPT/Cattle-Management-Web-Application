@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}{{ _('Check the import') }}{% endblock %}
+{% block content %}
+<h1>{{ _('Check the import') }}: {{ _(spec.title) }}</h1>
+<div class="card">
+  <p><b>{{ file }}</b>: {{ _('{n} rows', n=total) }}.
+    <span class="badge ok">{{ _('{n} ready to import', n=good) }}</span>
+    {% if bad %}<span class="badge bad">{{ _('{n} with problems, will be skipped', n=bad) }}</span>{% endif %}</p>
+  {% if ignored %}<p class="muted small">{{ _('Columns not used') }}: {{ ignored|join(', ') }}</p>{% endif %}
+  {% if results|length < total %}<p class="muted small">{{ _('Showing {shown} of {n} rows, including every row with a problem. All rows have been checked.', shown=results|length, n=total) }}</p>{% endif %}
+  <p class="muted small">{{ _('Nothing has been saved yet.') }}</p>
+  <form method="post" action="{{ url_for('import_confirm') }}" class="actions">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="payload" value="{{ payload }}">
+    <button {{ 'disabled' if not good }}>{{ _('Confirm import') }} ({{ good }})</button>
+    <a class="btn ghost" href="{{ url_for('import_page', kind=spec.kind) }}">{{ _('Cancel') }}</a>
+  </form>
+</div>
+<div class="card table-wrap"><table class="import-preview">
+<tr><th>{{ _('Row') }}</th>{% for c in spec.columns %}<th>{{ _(c.label) }}{{ ' *' if c.required }}</th>{% endfor %}<th>{{ _('Problems') }}</th></tr>
+{% for r in results %}
+<tr class="{{ 'row-ok' if r.ok else 'row-bad' }}"><td class="n">{{ r.line }}</td>
+  {% for v in r.cells %}<td>{{ v }}</td>{% endfor %}
+  <td>{% if r.ok %}✓ {{ _('OK') }}{% else %}{% for m in r.errors %}<div>{{ say(m) }}</div>{% endfor %}{% endif %}</td></tr>
+{% endfor %}
+</table></div>
+{% endblock %}

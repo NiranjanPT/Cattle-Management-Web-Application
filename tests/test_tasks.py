@@ -1,4 +1,5 @@
 """Scheduled tasks and how they show up in, and are completed through, the other modules."""
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -193,13 +194,14 @@ def test_havan_done_directly(fresh_db, farm):
 def test_calendar_shows_agni_and_schedule_links(fresh_db, farm):
     staff = login(fresh_db, "staff", "staff123")
     html = staff.get("/calendar").get_data(as_text=True)
-    assert "🔥 Agni:" in html and "Sunrise " in html and "sunrise in Sangli" in html
+    assert '<div class="agni-head">🔥 Agni</div>' in html and "sunrise in Sangli" in html
+    assert re.search(r"Sunrise \d{1,2}:\d\d AM", html)  # 12-hour clock
     assert f'/tasks/new?date={T.isoformat()}' in html
     may = staff.get("/calendar?year=2026&m=1").get_data(as_text=True)  # Vaishakha 2026 covers May
     assert "Agni Nakshatra (Kathiri)" in may
     customer = login(fresh_db, "customer", "customer123")
     html = customer.get("/calendar").get_data(as_text=True)
-    assert "🔥 Agni:" in html and "/tasks/new" not in html and "Task:" not in html
+    assert '<div class="agni-head">🔥 Agni</div>' in html and "/tasks/new" not in html and "Task:" not in html
 
 
 # ------------------------------------------------------------------ edit, delete, permissions

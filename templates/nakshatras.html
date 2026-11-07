@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}{{ _('Nakshatras') }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>{{ _('The 27 Nakshatras') }}</h1><a class="btn ghost" href="{{ url_for('calendar') }}">← {{ _('Calendar') }}</a></div>
+<h1>{{ _('The 27 Nakshatras') }}</h1>
 <div class="card">{{ _('Today ({day}, at sunrise)', day=today.date|fdate('%d %b %Y')) }}: <b>{{ _(today.paksha) }} {{ _(today.tithi) }}</b>,
   {{ _('Moon in {rashi}', rashi=_(today.moon_rashi)) }}, {{ _('nakshatra') }} <b>{{ today.nakshatra_dev if lang == 'mr' else today.nakshatra }}</b>{% if lang != 'mr' %} ({{ today.nakshatra_dev }}){% endif %} {{ _('pada') }} {{ today.pada }}.</div>
 <div class="card table-wrap"><table>

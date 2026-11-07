@@ -15,7 +15,7 @@
   {% endif %}
   <label>{{ _('Phone') }} <input name="phone" value="{{ u.phone or '' if u else '' }}"></label>
   <label>{{ _('Email') }} <input name="email" type="email" value="{{ u.email or '' if u else '' }}"></label>
-  <label class="full">{{ _('Address') }} <textarea name="address">{{ u.address or '' if u else '' }}</textarea></label>
+  {% set form, need = u or {}, false %}{% include "_address_fields.html" %}
   <label class="check full"><input type="checkbox" name="active" {{ 'checked' if not u or u.active }}> {{ _('Account active (can log in)') }}</label>
   <div class="full actions"><button>{{ _('Save') }}</button> <a class="btn ghost" href="{{ url_for('users') }}">{{ _('Cancel') }}</a>
     {% if u and u.id != user.id %}<button class="danger push" form="remove-user">{{ _('Remove user') }}</button>{% endif %}</div>

@@ -1,19 +1,24 @@
 {% extends "base.html" %}{% block title %}{{ _(cfg.title) }}{% endblock %}
 {% block content %}
-<div class="row spread"><h1>{{ _(cfg.title) }}</h1><a class="btn" href="{{ url_for('record_form', kind=kind, cattle_id=cid) }}">+ {{ _('Add {what}', what=_(cfg.one)) }}</a></div>
-<div class="tabs">
+<div class="row spread page-head"><h1>{{ _(cfg.title) }}</h1><div class="actions no-print">
+  <a class="btn ghost" href="{{ url_for('import_page', kind=kind) }}">⬆ {{ _('Import CSV') }}</a>
+  <a class="btn ghost" href="{{ url_for('records_export', kind=kind, cattle_id=cid, **{'from': d_from or None, 'to': d_to or None}) }}">⬇ {{ _('Export to Excel') }}</a>
+  <a class="btn" href="{{ url_for('record_form', kind=kind, cattle_id=cid) }}">+ {{ _('Add {what}', what=_(cfg.one)) }}</a></div></div>
+<nav class="tabs no-print" aria-label="{{ _('Records') }}">
   {% for k, l in [('health', 'Health'), ('vaccinations', 'Vaccinations'), ('feeding', 'Feeding'), ('breeding', 'Breeding'), ('milk', 'Milk')] %}
-  <a href="{{ url_for('records', kind=k) }}" class="{{ 'on' if kind == k }}">{{ _(l) }}</a>{% endfor %}
-</div>
-<form class="row card" method="get">
+  <a href="{{ url_for('records', kind=k) }}" class="{{ 'on' if kind == k }}"{% if kind == k %} aria-current="page"{% endif %}>{{ _(l) }}</a>{% endfor %}
+</nav>
+<form class="row card filters no-print" method="get">
   <label>{{ _('Animal') }} <select name="cattle_id"><option value="">{{ _('All animals') }}</option>
     {% for a in animals %}<option value="{{ a.id }}" {{ 'selected' if cid == a.id }}>{{ a.tag_no }} {{ a.name|dv }}</option>{% endfor %}</select></label>
   <label>{{ _('From') }} <input type="date" name="from" value="{{ d_from }}"></label>
   <label>{{ _('To') }} <input type="date" name="to" value="{{ d_to }}"></label>
   <button>{{ _('Filter') }}</button>
+  <span class="muted small">{{ _('{n} records', n='{:,}'.format(pager.total)) }}</span>
 </form>
-<div class="card table-wrap"><table>
-<tr><th>{{ _('Animal') }}</th>{% for f in cfg.fields if f[0] != 'notes' %}<th class="{{ 'n' if f[2] == 'number' }}">{{ _(f[1]|replace(' (blank = auto)', '')) }}</th>{% endfor %}<th></th></tr>
+<div class="card table-wrap scroll" tabindex="0" role="region" aria-label="{{ _(cfg.title) }}"><table>
+<thead><tr><th>{{ _('Animal') }}</th>{% for f in cfg.fields if f[0] != 'notes' %}<th class="{{ 'n' if f[2] == 'number' }}">{{ _(f[1]|replace(' (blank = auto)', '')) }}</th>{% endfor %}<th><span class="sr-only">{{ _('Actions') }}</span></th></tr></thead>
+<tbody>
 {% for r in rows %}
 <tr><td><a href="{{ url_for('cattle_profile', cid=r.cattle_id) }}">{{ r.tag_no }}</a> <span class="muted small">{{ r.cname|dv }}</span></td>
 {% for f in cfg.fields if f[0] != 'notes' %}<td class="{{ 'n' if f[2] == 'number' }}{{ ' nw' if f[2] == 'date' }}">
@@ -21,9 +26,11 @@
   {%- if f[0] == 'next_due' and val -%}<span class="badge {{ 'bad' if val < today else '' }}">{{ val }}</span>
   {%- elif f[0] == 'pregnancy' -%}<span class="badge {{ 'ok' if val == 'Confirmed' else 'bad' if val == 'Not pregnant' else 'warn' }}">{{ _(val) if val else '' }}</span>
   {%- elif val is none -%}{%- elif f[2] == 'number' -%}{{ val|num }}{%- else -%}{{ val|dv }}{%- endif -%}</td>{% endfor %}
-<td class="no-print"><a href="{{ url_for('record_form', kind=kind, rid=r.id) }}">{{ _('Edit') }}</a>
+{% set which = r.tag_no ~ ' ' ~ r[cfg.date] %}
+<td class="no-print acts"><a href="{{ url_for('record_form', kind=kind, rid=r.id) }}" aria-label="{{ _('Edit') }} {{ which }}">{{ _('Edit') }}</a>
   <form method="post" action="{{ url_for('record_delete', kind=kind, rid=r.id) }}" class="inline" onsubmit="return confirm({{ _('Delete this record?')|tojson|forceescape }})">
-  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger sm">{{ _('Delete') }}</button></form></td></tr>
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger sm" aria-label="{{ _('Delete') }} {{ which }}">{{ _('Delete') }}</button></form></td></tr>
 {% else %}<tr><td colspan="12" class="muted">{{ _('No records.') }}</td></tr>{% endfor %}
-</table></div>
+</tbody></table></div>
+{% include "_pager.html" %}
 {% endblock %}

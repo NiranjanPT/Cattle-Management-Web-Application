@@ -15,7 +15,7 @@ TABLES = {"users", "cattle", "products", "orders", "order_items", "health_record
           "breedings", "milk_records", "tasks", "task_animals", "text_translations"}
 
 
-MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py", "0003_text_translations.py"]  # in order
+MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py", "0003_text_translations.py", "0004_user_city_pincode.py"]  # in order
 
 
 def _migration_module(name="0001_initial_schema.py"):
@@ -78,3 +78,19 @@ def test_seed_demo(empty_db):
     again = subprocess.run(run, cwd=ROOT, env=env, capture_output=True, text=True, timeout=300)
     assert again.returncode != 0 and "already has cattle" in again.stderr
     assert _count("cattle") == 8
+
+
+def test_migration_0004_takes_pincodes_from_old_addresses(empty_db):
+    alembic("downgrade", "0003")
+    with psycopg.connect(empty_db, prepare_threshold=None, autocommit=True) as c:
+        for name, address in [("withpin", "Plot 4, Vishrambag, Sangli 416416"), ("nopin", "Kothrud, Pune"),
+                              ("phone", "Call 9822012345 first")]:  # 10 digits: a phone number, not a pincode
+            c.execute("INSERT INTO users (username, password_hash, full_name, role, address) VALUES (%s,'x',%s,'customer',%s)",
+                      (name, name, address))
+    alembic("upgrade", "head")
+    with psycopg.connect(empty_db, prepare_threshold=None, autocommit=True) as c:
+        got = dict(c.execute("SELECT username, pincode FROM users").fetchall())
+        assert got == {"withpin": "416416", "nopin": None, "phone": None}
+        assert c.execute("SELECT address FROM users WHERE username='withpin'").fetchone()[0].endswith("416416")  # kept
+        with pytest.raises(psycopg.errors.CheckViolation):
+            c.execute("UPDATE users SET pincode='12345' WHERE username='nopin'")

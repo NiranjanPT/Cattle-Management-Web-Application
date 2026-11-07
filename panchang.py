@@ -218,6 +218,77 @@ def day_info(d):
     }
 
 
+def _crossing(angle, target, t0, t1):
+    """The moment between t0 and t1 when angle(t) (degrees, increasing) reaches `target`, to within 20 seconds.
+
+    Bisection; the caller makes sure the angle is short of the target at t0 and past it at t1.
+    """
+    def reached(t):
+        return (angle(t) - target) % 360 < 180
+
+    lo, hi = t0, t1
+    while hi - lo > timedelta(seconds=20):
+        mid = lo + (hi - lo) / 2
+        if reached(mid):
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+def _hindu_day(d):
+    """A Hindu day runs from sunrise on d to the next sunrise."""
+    return sunrise(d), sunrise(d + timedelta(days=1))
+
+
+@lru_cache(maxsize=4096)
+def tithi_changes(d):
+    """The tithis that begin between sunrise on d and the next sunrise: [(time IST, tithi index 1..30)].
+
+    Usually one; none when a tithi lasts the whole day; two when one is skipped (kshaya).
+    """
+    start, end = _hindu_day(d)
+    k, last = int(positions(start)[2] // 12), int(positions(end)[2] // 12)
+    out = []
+    while k != last:
+        k = (k + 1) % 30
+        when = _crossing(lambda t: positions(t)[2], k * 12, start, end)
+        out.append((when.astimezone(IST), k + 1))
+    return out
+
+
+@lru_cache(maxsize=4096)
+def agni_periods(d):
+    """Where Agni is through the day, from sunrise on d to the next sunrise, with the times it moves.
+
+    Agnivas comes from the tithi and the weekday; the weekday holds until the next sunrise, so Agni moves
+    only when the tithi changes. [{"start", "end", "agni"}] (IST), joined where Agni stays in one place.
+    """
+    start, end = _hindu_day(d)
+    edges = [(start, day_info(d)["tithi_index"])] + list(tithi_changes(d))
+    periods = []
+    for i, (when, tithi) in enumerate(edges):
+        until = edges[i + 1][0] if i + 1 < len(edges) else end
+        agni = agnivas(tithi, d)
+        if periods and periods[-1]["agni"]["place"] == agni["place"]:
+            periods[-1]["end"] = until
+        else:
+            periods.append({"start": when, "end": until, "agni": agni})
+    return periods
+
+
+@lru_cache(maxsize=4096)
+def agni_nakshatra_change(d):
+    """("begins" or "ends", time IST) when the sun enters or leaves Agni Nakshatra between sunrise on d and
+    the next sunrise; None on other days."""
+    start, end = _hindu_day(d)
+    s0, s1 = positions(start)[0], positions(end)[0]
+    for kind, edge in (("begins", AGNI_NAKSHATRA[0]), ("ends", AGNI_NAKSHATRA[1])):
+        if s0 < edge <= s1:
+            return kind, _crossing(lambda t: positions(t)[0], edge, start, end).astimezone(IST)
+    return None
+
+
 def year_for(d):
     """Gregorian year whose Chaitra starts the Hindu year containing date d."""
     months = lunar_months(d.year)

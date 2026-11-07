@@ -1,51 +1,68 @@
 {% extends "base.html" %}{% block title %}{{ _('Dashboard') }}{% endblock %}
+{% set kinds = [('health', 'Health'), ('vaccinations', 'Vaccinations'), ('feeding', 'Feeding'), ('breeding', 'Breeding'), ('milk', 'Milk production')] %}
+{% macro view_all(url, what, n=none) %}<a class="view-all" href="{{ url }}" aria-label="{{ _('View all') }}: {{ what }}">{{ _('View all') }}{{ (' (' ~ n ~ ')') if n }} →</a>{% endmacro %}
 {% block content %}
-<div class="row spread">
+<div class="row spread page-head">
   <h1>{{ _('Farm dashboard') }}</h1>
-  <a class="card small" style="margin:0;padding:8px 12px;text-decoration:none;color:inherit" href="{{ url_for('calendar') }}">
+  <a class="card small today-chip" href="{{ url_for('calendar') }}">
     🗓 {{ today|fdate('%d %b %Y') }} · {% if pmonth %}{{ (_('Adhika') ~ ' ') if pmonth.adhika }}{{ pmonth.devanagari if lang == 'mr' else pmonth.name }}{% endif %} {{ _(pt.paksha) }} {{ _(pt.tithi) }} · <b>{{ pt.nakshatra_dev if lang == 'mr' else pt.nakshatra }}</b> {{ _('nakshatra') }}
     · <span class="agni {{ 'good' if pt.agni.good_for_havan else 'bad' }}" title="{{ _(pt.agni.note) }}">🔥 {{ _('Agni') }}: {{ pt.agni.devanagari if lang == 'mr' else pt.agni.place }}</span>{% if pt.agni_nakshatra %} · <span class="agni bad">{{ _('Agni Nakshatra') }}</span>{% endif %}</a>
 </div>
+
+<div class="quick no-print" role="group" aria-label="{{ _('Quick actions') }}">
+  <a class="btn" href="{{ url_for('cattle_form') }}">+ {{ _('Add cattle') }}</a>
+  <details class="menu"><summary class="btn ghost">+ {{ _('Add record') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
+    {% for k, l in kinds %}<a href="{{ url_for('record_form', kind=k, back=request.path) }}">{{ _(l) }}</a>{% endfor %}</div></details>
+  <a class="btn ghost" href="{{ url_for('import_page') }}">⬆ {{ _('Import CSV') }}</a>
+  <details class="menu"><summary class="btn ghost">📊 {{ _('Reports') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
+    <span class="menu-note">{{ _('Download as Excel') }}</span>
+    <a href="{{ url_for('cattle_export', status='') }}">{{ _('Cattle register') }}</a>
+    {% for k, l in kinds %}<a href="{{ url_for('records_export', kind=k) }}">{{ _(l) }}</a>{% endfor %}</div></details>
+</div>
+
 {% set overdue = task_rows|selectattr('due_date', 'lt', today)|list %}
 {% set due_today = task_rows|selectattr('due_date', 'eq', today)|list %}
 <div class="tiles">
-  <div class="tile"><div class="k">{{ _('Tasks today') }}</div><div class="v">{{ due_today|length }}</div><div class="s">{% if overdue %}<span class="badge bad">{{ _('{n} overdue', n=overdue|length) }}</span> {% endif %}<a href="{{ url_for('tasks') }}">{{ _('all tasks') }}</a></div></div>
-  <div class="tile"><div class="k">{{ _('Active cattle') }}</div><div class="v">{{ stats.active }}</div><div class="s">{{ _('{n} female', n=stats.female) }}</div></div>
-  <div class="tile"><div class="k">{{ _('Milk today') }}</div><div class="v">{{ stats.milk_today|num }} L</div><div class="s">{{ _('{n} L this month', n=stats.milk_month|num) }}</div></div>
-  <div class="tile"><div class="k">{{ _('Pregnant') }}</div><div class="v">{{ stats.pregnant }}</div><div class="s">{{ _('confirmed, not yet calved') }}</div></div>
-  <div class="tile"><div class="k">{{ _('Vaccines due') }}</div><div class="v">{{ vacc_due|length }}</div><div class="s">{{ _('overdue or in next 14 days') }}</div></div>
-  <div class="tile"><div class="k">{{ _('Pending orders') }}</div><div class="v">{{ stats.pending_orders }}</div><div class="s"><a href="{{ url_for('manage_orders', status='Pending') }}">{{ _('review') }}</a></div></div>
-  <div class="tile"><div class="k">{{ _('Shop sales') }}</div><div class="v">{{ stats.sales_month|money }}</div><div class="s">{{ _('this month') }}</div></div>
+  <a class="tile" href="{{ url_for('tasks') }}"><span class="k">{{ _('Tasks today') }}</span><span class="v">{{ due_today|length }}</span><span class="s">{% if overdue %}<span class="badge bad">{{ _('{n} overdue', n=overdue|length) }}</span>{% else %}{{ _('all tasks') }}{% endif %}</span></a>
+  <a class="tile" href="{{ url_for('cattle_list') }}"><span class="k">{{ _('Active cattle') }}</span><span class="v">{{ stats.active }}</span><span class="s">{{ _('{n} female', n=stats.female) }}</span></a>
+  <a class="tile" href="{{ url_for('records', kind='milk') }}"><span class="k">{{ _('Milk today') }}</span><span class="v">{{ stats.milk_today|num }} L</span><span class="s">{{ _('{n} L this month', n=stats.milk_month|num) }}</span></a>
+  <a class="tile" href="{{ url_for('records', kind='breeding') }}"><span class="k">{{ _('Pregnant') }}</span><span class="v">{{ stats.pregnant }}</span><span class="s">{{ _('confirmed, not yet calved') }}</span></a>
+  <a class="tile" href="{{ url_for('records', kind='vaccinations') }}"><span class="k">{{ _('Vaccines due') }}</span><span class="v">{{ vacc_due|length }}</span><span class="s">{{ _('overdue or in next 14 days') }}</span></a>
+  <a class="tile" href="{{ url_for('manage_orders', status='Pending') }}"><span class="k">{{ _('Pending orders') }}</span><span class="v">{{ stats.pending_orders }}</span><span class="s">{{ _('review') }}</span></a>
+  <a class="tile" href="{{ url_for('manage_orders') }}"><span class="k">{{ _('Shop sales') }}</span><span class="v">{{ stats.sales_month|money }}</span><span class="s">{{ _('this month') }}</span></a>
 </div>
-<div class="grid">
-  <div class="card">
-    <div class="row spread"><h2>{{ _('Tasks this week') }}</h2><a class="btn sm" href="{{ url_for('task_form', back=request.path) }}">+ {{ _('Task') }}</a></div>
-    {% if task_rows %}{% set rows, back = task_rows, request.path %}{% include "_task_table.html" %}
-    {% else %}<p class="muted">{{ _('Nothing scheduled for the next 7 days.') }}</p>{% endif %}
-  </div>
-  <div class="card">
-    <h2>{{ _('Milk collected, last 14 days (litres)') }}</h2>
-    <div class="bars" role="img" aria-label="{{ _('Daily milk in litres for the last 14 days') }}">
-      {% for m in milk %}<div class="bar" title="{{ m.d|fdate('%d %b') }}: {{ m.l|num }} L"><span class="val">{{ m.l|num if m.l else '' }}</span><i style="height:{{ (m.l / milk_max * 100)|round(1) }}%"></i></div>{% endfor %}
+
+<div class="grid dash">
+  <section class="card wide" aria-labelledby="milk-title">
+    <div class="card-head"><h2 id="milk-title">{{ _('Milk collected, last 14 days (litres)') }}</h2>{{ view_all(url_for('records', kind='milk'), _('Milk records')) }}</div>
+    {# whole litres above the bars once a day reaches 100, so the labels fit; the exact figure is in the tooltip #}
+    <div class="bars" role="img" aria-label="{{ _('Daily milk in litres for the last 14 days') }}: {% for m in milk %}{{ m.d|fdate('%d %b') }} {{ m.l|num }}{{ ', ' if not loop.last }}{% endfor %}">
+      {% for m in milk %}<div class="bar" title="{{ m.d|fdate('%d %b') }}: {{ m.l|num }} L"><span class="val">{{ ((m.l|round|int) if milk_max >= 100 else m.l|num) if m.l else '' }}</span><i style="height:{{ (m.l / milk_max * 100)|round(1) }}%"></i></div>{% endfor %}
     </div>
-    <div class="bar-labels">{% for m in milk %}<span>{{ m.d.day }}</span>{% endfor %}</div>
-    <p class="small muted">{{ _('Highest day: {n} L.', n=milk_max|num) }} <a href="{{ url_for('records', kind='milk') }}">{{ _('Milk records') }}</a></p>
-  </div>
-  <div class="card">
-    <h2>{{ _('Vaccinations due') }}</h2>
-    {% if vacc_due %}<table>{% for v in vacc_due %}<tr><td><a href="{{ url_for('cattle_profile', cid=v.cattle_id) }}">{{ v.tag_no }}</a> {{ v.cname|dv }}</td><td>{{ v.vaccine|dv }}</td>
-      <td><span class="badge {{ 'bad' if v.next_due < today else 'warn' }}">{{ (_('Overdue') ~ ' ') if v.next_due < today }}{{ v.next_due }}</span></td></tr>{% endfor %}</table>
+    <div class="bar-labels" aria-hidden="true">{% for m in milk %}<span>{{ m.d.day }}</span>{% endfor %}</div>
+    <p class="small muted">{{ _('Highest day: {n} L.', n=milk_max|num) }}</p>
+  </section>
+  <section class="card" aria-labelledby="tasks-title">
+    <div class="card-head"><h2 id="tasks-title">{{ _('Tasks this week') }}</h2>
+      <span class="row"><a class="btn sm" href="{{ url_for('task_form', back=request.path) }}">+ {{ _('Task') }}</a>{{ view_all(url_for('tasks'), _('Tasks'), task_rows|length if task_rows|length > 5) }}</span></div>
+    {% if task_rows %}{% set rows, back = task_rows[:5], request.path %}{% include "_task_table.html" %}
+    {% else %}<p class="muted">{{ _('Nothing scheduled for the next 7 days.') }}</p>{% endif %}
+  </section>
+  <section class="card" aria-labelledby="vacc-title">
+    <div class="card-head"><h2 id="vacc-title">{{ _('Vaccinations due') }}</h2>{{ view_all(url_for('records', kind='vaccinations'), _('Vaccinations'), vacc_due|length if vacc_due|length > 5) }}</div>
+    {% if vacc_due %}<div class="table-wrap"><table class="compact">{% for v in vacc_due[:5] %}<tr><td><a href="{{ url_for('cattle_profile', cid=v.cattle_id) }}">{{ v.tag_no }}</a><div class="muted small">{{ v.cname|dv }}</div></td>
+      <td>{{ v.vaccine|dv }}<div><span class="badge {{ 'bad' if v.next_due < today else 'warn' }}">{{ (_('Overdue') ~ ' ') if v.next_due < today }}{{ v.next_due }}</span></div></td></tr>{% endfor %}</table></div>
     {% else %}<p class="muted">{{ _('Nothing due in the next 14 days.') }}</p>{% endif %}
-  </div>
-  <div class="card">
-    <h2>{{ _('Upcoming calvings') }}</h2>
-    {% if calvings %}<table>{% for b in calvings %}<tr><td><a href="{{ url_for('cattle_profile', cid=b.cattle_id) }}">{{ b.tag_no }}</a> {{ b.cname|dv }}</td><td class="nw">{{ b.expected_calving }}</td></tr>{% endfor %}</table>
+  </section>
+  <section class="card" aria-labelledby="calving-title">
+    <div class="card-head"><h2 id="calving-title">{{ _('Upcoming calvings') }}</h2>{{ view_all(url_for('records', kind='breeding'), _('Breeding records')) }}</div>
+    {% if calvings %}<div class="table-wrap"><table class="compact">{% for b in calvings[:5] %}<tr><td><a href="{{ url_for('cattle_profile', cid=b.cattle_id) }}">{{ b.tag_no }}</a> {{ b.cname|dv }}</td><td class="nw">{{ b.expected_calving }}</td></tr>{% endfor %}</table></div>
     {% else %}<p class="muted">{{ _('No confirmed pregnancies.') }}</p>{% endif %}
-  </div>
-  <div class="card">
-    <h2>{{ _('Recent health events') }}</h2>
-    {% if recent_health %}<table>{% for h in recent_health %}<tr><td class="nw">{{ h.date }}</td><td><a href="{{ url_for('cattle_profile', cid=h.cattle_id) }}">{{ h.tag_no }}</a></td><td>{{ _(h.kind) }}: {{ h.diagnosis|dv }}</td></tr>{% endfor %}</table>
+  </section>
+  <section class="card" aria-labelledby="health-title">
+    <div class="card-head"><h2 id="health-title">{{ _('Recent health events') }}</h2>{{ view_all(url_for('records', kind='health'), _('Health records')) }}</div>
+    {% if recent_health %}<div class="table-wrap"><table class="compact">{% for h in recent_health %}<tr><td><a href="{{ url_for('cattle_profile', cid=h.cattle_id) }}">{{ h.tag_no }}</a><div class="muted small">{{ h.date }}</div></td><td>{{ _(h.kind) }}: {{ h.diagnosis|dv }}</td></tr>{% endfor %}</table></div>
     {% else %}<p class="muted">{{ _('No health records yet.') }}</p>{% endif %}
-  </div>
+  </section>
 </div>
 {% endblock %}

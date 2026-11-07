@@ -9,61 +9,77 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>document.documentElement.classList.add('js')</script>
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
 {% block head %}{% endblock %}
 </head>
-<body>
-<header class="top"><div class="top-inner">
+{# where this page sits, for the Back button and breadcrumbs (see page_place() in app.py) #}
+{% set here = self.title()|trim %}
+{% set ep = request.endpoint or '' %}
+{% macro navlink(url, label, on, extra='') -%}
+  <a href="{{ url }}" class="{{ 'on' if on }}"{% if on %} aria-current="page"{% endif %}>{{ label }}{{ extra }}</a>
+{%- endmacro %}
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip" href="#content">{{ _('Skip to content') }}</a>
+<header class="top{{ ' long' if user and user.role in ('admin', 'staff') }}" id="top"><div class="top-inner">
   <a class="brand" href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='brand/logo-mark.svg') }}" alt="" width="40" height="40"><span>{{ _(BRAND) }}</span></a>
-  <nav class="main">
-  {% if user %}
-    {% set ep = request.endpoint %}
-    {% if user.role in ('admin', 'staff') %}
-      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">{{ _('Dashboard') }}</a>
-      <a href="{{ url_for('cattle_list') }}" class="{{ 'on' if ep and ep.startswith('cattle') }}">{{ _('Cattle') }}</a>
-      <details class="menu"><summary>{{ _('Records') }} ▾</summary><div class="menu-items">
-        <a href="{{ url_for('records', kind='health') }}">{{ _('Health') }}</a>
-        <a href="{{ url_for('records', kind='vaccinations') }}">{{ _('Vaccinations') }}</a>
-        <a href="{{ url_for('records', kind='feeding') }}">{{ _('Feeding') }}</a>
-        <a href="{{ url_for('records', kind='breeding') }}">{{ _('Breeding') }}</a>
-        <a href="{{ url_for('records', kind='milk') }}">{{ _('Milk production') }}</a>
-      </div></details>
-      <details class="menu"><summary>{{ _('Shop') }} ▾</summary><div class="menu-items">
-        <a href="{{ url_for('shop') }}">{{ _('Storefront') }}</a>
-        <a href="{{ url_for('products') }}">{{ _('Products and stock') }}</a>
-        <a href="{{ url_for('manage_orders') }}">{{ _('Customer orders') }}</a>
-      </div></details>
-      <a href="{{ url_for('tasks') }}" class="{{ 'on' if ep and ep.startswith('task') }}">{{ _('Tasks') }}{% if tasks_due %} <span class="badge bad" title="{{ _('due today or overdue') }}">{{ tasks_due }}</span>{% endif %}</a>
-      <a href="{{ url_for('calendar') }}" class="{{ 'on' if ep and ep.startswith('calendar') or ep == 'nakshatras' }}">{{ _('Calendar') }}</a>
-      {% if user.role == 'admin' %}<a href="{{ url_for('users') }}" class="{{ 'on' if ep in ('users', 'user_form') }}">{{ _('Users') }}</a>{% endif %}
-    {% else %}
-      <a href="{{ url_for('shop') }}" class="{{ 'on' if ep == 'shop' }}">{{ _('Shop') }}</a>
-      <a href="{{ url_for('my_orders') }}" class="{{ 'on' if ep == 'my_orders' }}">{{ _('My orders') }}</a>
-      <a href="{{ url_for('calendar') }}" class="{{ 'on' if ep == 'calendar' }}">{{ _('Calendar') }}</a>
-    {% endif %}
+  <div class="menu-area" id="menu">
+  <nav class="main" aria-label="{{ _('Main menu') }}">
+  {% if user and user.role in ('admin', 'staff') %}
+    {% set rec_on = ep in ('records', 'record_form') or (ep == 'import_page' and (page_kind or 'cattle') != 'cattle') %}
+    {% set shop_on = ep in ('shop', 'cart', 'products', 'product_form', 'manage_orders', 'order_detail') %}
+    {{ navlink(url_for('dashboard'), _('Dashboard'), ep == 'dashboard') }}
+    {{ navlink(url_for('cattle_list'), _('Cattle'), ep.startswith('cattle') or (ep == 'import_page' and not rec_on)) }}
+    <details class="menu"><summary class="{{ 'on' if rec_on }}">{{ _('Records') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
+      {% for k, l in [('health', 'Health'), ('vaccinations', 'Vaccinations'), ('feeding', 'Feeding'), ('breeding', 'Breeding'), ('milk', 'Milk production')] %}
+      {{ navlink(url_for('records', kind=k), _(l), rec_on and page_kind == k) }}{% endfor %}
+    </div></details>
+    <details class="menu"><summary class="{{ 'on' if shop_on }}">{{ _('Shop') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
+      {{ navlink(url_for('shop'), _('Storefront'), ep in ('shop', 'cart')) }}
+      {{ navlink(url_for('products'), _('Products and stock'), ep in ('products', 'product_form')) }}
+      {{ navlink(url_for('manage_orders'), _('Customer orders'), ep in ('manage_orders', 'order_detail')) }}
+    </div></details>
+    {% set due %}{% if tasks_due %} <span class="badge bad" title="{{ _('due today or overdue') }}">{{ tasks_due }}</span>{% endif %}{% endset %}
+    {{ navlink(url_for('tasks'), _('Tasks'), ep.startswith('task'), due) }}
+    {{ navlink(url_for('calendar'), _('Calendar'), ep in ('calendar', 'nakshatras')) }}
+    {% if user.role == 'admin' %}{{ navlink(url_for('users'), _('Users'), ep in ('users', 'user_form')) }}{% endif %}
+  {% elif user %}
+    {{ navlink(url_for('shop'), _('Shop'), ep in ('shop', 'cart')) }}
+    {{ navlink(url_for('my_orders'), _('My orders'), ep in ('my_orders', 'order_detail')) }}
+    {{ navlink(url_for('calendar'), _('Calendar'), ep in ('calendar', 'nakshatras')) }}
   {% else %}
-    {% block site_nav %}<a href="{{ url_for('index') }}">{{ _('Home') }}</a>{% endblock %}
+    {{ navlink(url_for('index'), _('Home'), ep in ('index', 'website')) }}
+    {{ navlink(url_for('site_about'), _('About us'), ep == 'site_about') }}
+    {{ navlink(url_for('site_products'), _('Products'), ep == 'site_products') }}
+    {{ navlink(url_for('site_order'), _('How to order'), ep == 'site_order') }}
+    {{ navlink(url_for('site_contact'), _('Contact'), ep == 'site_contact') }}
   {% endif %}
   </nav>
   <div class="who">
     {% if user %}
     {% set name = user.full_name|dv %}
-    <a class="who-link" href="{{ url_for('website') }}" title="{{ _('Our website') }}">🌐 {{ _('Website') }}</a>
-    <a class="who-link" href="{{ url_for('cart') }}" title="{{ _('Cart') }}">🛒 <span class="count">{{ cart_count }}</span></a>
-    <a class="who-user" href="{{ url_for('profile') }}" title="{{ _('My profile') }}"><span class="avatar" aria-hidden="true">{{ name[:1] }}</span><span class="who-name">{{ name }}</span></a>
+    {% set web_on = ep == 'website' or ep.startswith('site_') %}
+    <a class="who-link{{ ' on' if web_on }}" href="{{ url_for('website') }}"{% if web_on %} aria-current="page"{% endif %}>🌐 {{ _('Website') }}</a>
+    <a class="who-link" href="{{ url_for('cart') }}" aria-label="{{ _('Cart') }}: {{ cart_count }}">🛒 <span class="count">{{ cart_count }}</span></a>
+    <a class="who-user" href="{{ url_for('profile') }}" title="{{ _('My profile') }}"{% if ep == 'profile' %} aria-current="page"{% endif %}><span class="avatar" aria-hidden="true">{{ name[:1] }}</span><span class="who-name">{{ name }}</span></a>
     <a class="btn ghost sm" href="{{ url_for('logout') }}">{{ _('Log out') }}</a>
-    {% else %}
+    {% elif ep != 'login' %}
     <a class="btn sm" href="{{ url_for('login') }}">{{ _('Log in') }}</a>
     {% endif %}
-    <span class="lang" role="group" aria-label="{{ _('Language') }}">
-      {%- for code, name in LANGS.items() %}<a href="{{ url_for('set_lang', code=code, next=request.full_path) }}" class="{{ 'on' if lang == code }}" lang="{{ code }}" hreflang="{{ code }}">{{ name }}</a>{% endfor -%}
-    </span>
   </div>
+  </div>
+  <span class="lang" role="group" aria-label="{{ _('Language') }}">
+    {%- for code, name in LANGS.items() %}<a href="{{ url_for('set_lang', code=code, next=request.full_path) }}" class="{{ 'on' if lang == code }}" lang="{{ code }}" hreflang="{{ code }}"{% if lang == code %} aria-current="true"{% endif %}>{{ name }}</a>{% endfor -%}
+  </span>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="menu"><span aria-hidden="true">☰</span> {{ _('Menu') }}</button>
 </div></header>
 {% block main %}
-<main>
-{% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+<main id="content" tabindex="-1">
+{% include "_pagebar.html" %}
+{% include "_flashes.html" %}
 {% block content %}{% endblock %}
 </main>
 {% endblock %}
+<a class="to-top" href="#top" hidden>↑ {{ _('Back to top') }}</a>
 </body>
 </html>

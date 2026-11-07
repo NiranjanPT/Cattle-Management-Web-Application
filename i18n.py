@@ -262,6 +262,38 @@ MR = {
     "Agni": "अग्नी",
     "Agni Nakshatra": "अग्नी नक्षत्र",
     "Agni Nakshatra (Kathiri)": "अग्नी नक्षत्र (कत्तिरी)",
+    "{time}, {date}": "{date}, {time}",
+    # customers' city and pincode, the filters and sorting
+    "Address (house, street, area)": "पत्ता (घर, रस्ता, परिसर)",
+    "City": "शहर",
+    "Pincode": "पिनकोड",
+    "e.g. Sangli": "उदा. सांगली",
+    "6 digits, like 416416": "6 अंक, उदा. 416416",
+    "Please enter your address, city and pincode.": "कृपया तुमचा पत्ता, शहर आणि पिनकोड भरा.",
+    "The pincode must be 6 digits, like 416416.": "पिनकोड 6 अंकी असावा, उदा. 416416.",
+    "All cities": "सर्व शहरे",
+    "e.g. 416 or 416416": "उदा. 416 किंवा 416416",
+    "A whole pincode, or its first digits for an area": "पूर्ण पिनकोड, किंवा परिसरासाठी त्याचे सुरुवातीचे अंक",
+    "Sort by": "क्रम",
+    "Role and name": "भूमिका आणि नाव",
+    "Newest first": "नवीन आधी",
+    "Oldest first": "जुने आधी",
+    "Clear": "साफ करा",
+    "{n} accounts": "{n} खाती",
+    "Everyone in {city}": "{city} मधील सर्व",
+    "No orders found.": "ऑर्डर सापडल्या नाहीत.",
+    "{date}, {time}": "{date}, {time}",
+    "to": "ते",
+    "Agni Nakshatra begins": "अग्नी नक्षत्र सुरू",
+    "Agni Nakshatra ends": "अग्नी नक्षत्र समाप्त",
+    "Agni moves when the tithi changes. Each day shows every place Agni stays from sunrise on that day to the next "
+    "sunrise, with the exact start and end time of each (12-hour clock, farm time); a time after midnight also shows "
+    "its date.":
+        "तिथी बदलली की अग्नीवास बदलतो. प्रत्येक दिवशी त्या दिवसाच्या सूर्योदयापासून पुढच्या सूर्योदयापर्यंत अग्नी जिथे "
+        "जिथे असतो ते, प्रत्येकाची नेमकी सुरू होण्याची आणि संपण्याची वेळ (12 तासांचे घड्याळ, गोठ्याची वेळ) यासह "
+        "दाखवले आहे; मध्यरात्रीनंतरच्या वेळेसोबत तारीखही दिली आहे.",
+    "Its first and last days show the time it begins and ends.":
+        "त्याच्या पहिल्या आणि शेवटच्या दिवशी तो सुरू होण्याची आणि संपण्याची वेळ दाखवली आहे.",
     "Sun from Bharani pada 3 to Rohini pada 1": "सूर्य भरणीच्या तिसऱ्या चरणापासून रोहिणीच्या पहिल्या चरणापर्यंत",
     "Sunrise": "सूर्योदय",
     "{n} farm events": "गोठ्यातील {n} नोंदी",
@@ -560,6 +592,119 @@ MR = {
     "Page not found.": "पान सापडले नाही.",
     "Some of the values entered are not valid. Please go back and check dates and numbers.":
         "भरलेली काही माहिती योग्य नाही. कृपया मागे जाऊन दिनांक आणि अंक तपासा.",
+    # bulk import and Excel export
+    "Import from a file": "फाइलमधून आयात करा",
+    "What the file holds": "फाइलमध्ये काय आहे",
+    "File (.csv or .xlsx, up to 5 MB)": "फाइल (.csv किंवा .xlsx, 5 MB पर्यंत)",
+    "Animals are matched by their tag number. Every row is checked first and you see a preview: nothing is saved until you click Confirm import.": "जनावरे त्यांच्या टॅग क्रमांकावरून ओळखली जातात. आधी प्रत्येक ओळ तपासली जाते आणि तुम्हाला पूर्वावलोकन दिसते: तुम्ही \"आयात निश्चित करा\" वर क्लिक करेपर्यंत काहीही जतन होत नाही.",
+    "Up to {n} rows per file.": "एका फाइलमध्ये {n} ओळींपर्यंत.",
+    "Check the file": "फाइल तपासा",
+    "Download template": "नमुना फाइल डाउनलोड करा",
+    "An Excel file with the right column names, an example row and an Instructions sheet. Fill it in, then upload it here as .xlsx or as CSV UTF-8.": "योग्य स्तंभ नावे, एक उदाहरण ओळ आणि सूचना पत्रक असलेली Excel फाइल. ती भरा आणि .xlsx किंवा CSV UTF-8 म्हणून येथे अपलोड करा.",
+    "Check the import": "आयात तपासा",
+    "{n} rows": "{n} ओळी",
+    "{n} ready to import": "{n} आयातीसाठी तयार",
+    "{n} with problems, will be skipped": "{n} मध्ये त्रुटी, वगळल्या जातील",
+    "Columns not used": "न वापरलेले स्तंभ",
+    "Showing {shown} of {n} rows, including every row with a problem. All rows have been checked.": "{n} पैकी {shown} ओळी दाखवल्या आहेत, त्रुटी असलेल्या सर्व ओळींसह. सर्व ओळी तपासल्या आहेत.",
+    "Nothing has been saved yet.": "अजून काहीही जतन केलेले नाही.",
+    "Confirm import": "आयात निश्चित करा",
+    "Row": "ओळ",
+    "Problems": "त्रुटी",
+    "OK": "ठीक",
+    "Import finished": "आयात पूर्ण",
+    "{n} imported, {m} skipped": "{n} आयात केल्या, {m} वगळल्या",
+    "Download the skipped rows (CSV)": "वगळलेल्या ओळी डाउनलोड करा (CSV)",
+    "Import another file": "दुसरी फाइल आयात करा",
+    "The CSV has each skipped row with the reason in the last column. Fix the rows and import the file again: the Row and Problems columns are left out.": "CSV मध्ये प्रत्येक वगळलेली ओळ आणि शेवटच्या स्तंभात तिचे कारण आहे. ओळी दुरुस्त करा आणि फाइल पुन्हा आयात करा: ओळ आणि त्रुटी हे स्तंभ विचारात घेतले जात नाहीत.",
+    "Import CSV": "CSV आयात करा",
+    "Export to Excel": "Excel मध्ये निर्यात करा",
+    "This preview has expired. Please upload the file again.": "हे पूर्वावलोकन कालबाह्य झाले आहे. कृपया फाइल पुन्हा अपलोड करा.",
+    "This file has already been imported.": "ही फाइल आधीच आयात झाली आहे.",
+    "Nothing was imported: the database refused one of the rows. Please check the file and try again.": "काहीही आयात झाले नाही: डेटाबेसने एक ओळ नाकारली. कृपया फाइल तपासा आणि पुन्हा प्रयत्न करा.",
+    "The file is too big: the limit is 5 MB.": "फाइल खूप मोठी आहे: मर्यादा 5 MB आहे.",
+    "Choose a file to import.": "आयात करण्यासाठी फाइल निवडा.",
+    "Choose a .csv or .xlsx file.": ".csv किंवा .xlsx फाइल निवडा.",
+    "The file is empty.": "फाइल रिकामी आहे.",
+    "The file is larger than 5 MB.": "फाइल 5 MB पेक्षा मोठी आहे.",
+    "The file has more than {n} rows. Please split it into smaller files.": "फाइलमध्ये {n} पेक्षा जास्त ओळी आहेत. कृपया ती लहान फाइलींमध्ये विभागा.",
+    "The file has column names but no rows under them.": "फाइलमध्ये स्तंभांची नावे आहेत पण त्याखाली ओळी नाहीत.",
+    "The file could not be read as CSV.": "फाइल CSV म्हणून वाचता आली नाही.",
+    "The Excel file is too large once unpacked.": "उघडल्यानंतर ही Excel फाइल खूप मोठी होते.",
+    "The file is not a valid Excel .xlsx file.": "ही वैध Excel .xlsx फाइल नाही.",
+    "The column {name} appears twice.": "{name} हा स्तंभ दोनदा आहे.",
+    "Required column missing: {col}.": "आवश्यक स्तंभ नाही: {col}.",
+    "{col}: required.": "{col}: आवश्यक.",
+    "{col}: longer than {n} characters.": "{col}: {n} अक्षरांपेक्षा लांब.",
+    "{col}: {value} starts with {char}, which a spreadsheet would run as a formula.": "{col}: {value} ची सुरुवात {char} ने होते, जे स्प्रेडशीट सूत्र म्हणून चालवेल.",
+    "{col}: {value} is not a date written YYYY-MM-DD.": "{col}: {value} ही YYYY-MM-DD स्वरूपातील तारीख नाही.",
+    "{col}: {value} is not a number (0 or more).": "{col}: {value} ही संख्या नाही (0 किंवा जास्त).",
+    "{col}: {value} is too large.": "{col}: {value} खूप मोठे आहे.",
+    "{col}: {value} is not one of the choices ({options}).": "{col}: {value} हा पर्याय नाही ({options}).",
+    "Tag {tag}: no animal with this tag number in the register.": "टॅग {tag}: या टॅग क्रमांकाचे जनावर नोंदवहीत नाही.",
+    "Tag {tag}: an animal with this tag number is already in the register.": "टॅग {tag}: या टॅग क्रमांकाचे जनावर आधीच नोंदवहीत आहे.",
+    "Tag {tag} appears more than once in this file (rows {rows}).": "टॅग {tag} या फाइलमध्ये एकापेक्षा जास्त वेळा आहे (ओळी {rows}).",
+    "{col}: an animal can't be its own mother.": "{col}: जनावर स्वतःचीच आई असू शकत नाही.",
+    "{col}: {tag} is not a female.": "{col}: {tag} मादी नाही.",
+    "{col}: {tag} appears more than once in this file.": "{col}: {tag} या फाइलमध्ये एकापेक्षा जास्त वेळा आहे.",
+    "{n} records": "{n} नोंदी",
+    "This file has the columns of {right}, not {chosen}, so it is checked as {right}.":
+        "या फाइलमध्ये {chosen} ऐवजी {right} चे स्तंभ आहेत, म्हणून ती {right} म्हणून तपासली आहे.",
+    "{col}: no animal with tag {tag} in the register or in this file.": "{col}: टॅग {tag} चे जनावर नोंदवहीत किंवा या फाइलमध्ये नाही.",
+    "{col}: the row for {tag} has problems, so it won't be imported.": "{col}: {tag} च्या ओळीत त्रुटी आहेत, त्यामुळे ही ओळ आयात होणार नाही.",
+    "A new tag number, not used by another animal.": "नवीन टॅग क्रमांक, जो दुसऱ्या जनावराला दिलेला नाही.",
+    "Tag number of an animal already in the register.": "नोंदवहीत आधीपासून असलेल्या जनावराचा टॅग क्रमांक.",
+    "Tag number of the mother: an animal in the register or a female in this file.": "आईचा टॅग क्रमांक: नोंदवहीतील जनावर किंवा या फाइलमधील मादी.",
+    "Date, written YYYY-MM-DD.": "तारीख, YYYY-MM-DD स्वरूपात.",
+    "Number, 0 or more, for example 12.5.": "संख्या, 0 किंवा जास्त, उदा. 12.5.",
+    "One of: {options}.": "यापैकी एक: {options}.",
+    "Blank means {value}.": "रिकामे ठेवल्यास {value}.",
+    "Text, for example: {examples}.": "मजकूर, उदा.: {examples}.",
+    "Text.": "मजकूर.",
+    "Blank: worked out from the service date (283 days; 310 for buffaloes).": "रिकामे ठेवल्यास रेतनाच्या तारखेवरून काढली जाते (283 दिवस; म्हशींसाठी 310).",
+    "Choose one of the values in the list.": "यादीतील एक मूल्य निवडा.",
+    "Instructions": "सूचना",
+    "Required": "आवश्यक",
+    "Optional": "ऐच्छिक",
+    "Column": "स्तंभ",
+    "Required?": "आवश्यक?",
+    "What to enter": "काय भरावे",
+    "Row 2 of the first sheet is an example: replace it with your own rows or delete it.": "पहिल्या पत्रकातील ओळ 2 हे उदाहरण आहे: त्याऐवजी तुमच्या ओळी भरा किंवा ती काढून टाका.",
+    "Animals are matched by their tag number.": "जनावरे त्यांच्या टॅग क्रमांकावरून ओळखली जातात.",
+    "Dates are written YYYY-MM-DD, for example {example}. Date cells formatted by Excel are fine too.": "तारखा YYYY-MM-DD स्वरूपात लिहा, उदा. {example}. Excel मध्ये तारीख म्हणून ठेवलेले सेलही चालतात.",
+    "Save the file as Excel (.xlsx) or as CSV UTF-8, up to 5 MB, and upload it on the Import page. Nothing is saved until you check the preview and click Confirm import.": "फाइल Excel (.xlsx) किंवा CSV UTF-8 म्हणून, 5 MB पर्यंत, जतन करा आणि आयात पानावर अपलोड करा. पूर्वावलोकन तपासून \"आयात निश्चित करा\" वर क्लिक करेपर्यंत काहीही जतन होत नाही.",
+    # menu, Back button, breadcrumbs, pages of a list, dashboard and profile
+    "Skip to content": "मुख्य मजकुराकडे जा",
+    "Main menu": "मुख्य मेनू",
+    "Menu": "मेनू",
+    "Back": "मागे",
+    "You are here": "तुम्ही येथे आहात",
+    "Back to top": "वर जा",
+    "Pages": "पाने",
+    "Showing {first}–{last} of {n}": "{n} पैकी {first}–{last} दाखवले आहेत",
+    "Previous": "मागील",
+    "Next": "पुढील",
+    "Page {n}": "पान {n}",
+    "Search": "शोधा",
+    "Actions": "क्रिया",
+    "Order number or customer": "ऑर्डर क्रमांक किंवा ग्राहक",
+    "Product or category": "उत्पादन किंवा प्रकार",
+    "Name, username, phone or email": "नाव, वापरकर्तानाव, फोन किंवा ईमेल",
+    "No users found.": "वापरकर्ते सापडले नाहीत.",
+    "Status of order #{n}": "ऑर्डर #{n} ची स्थिती",
+    "View all": "सर्व पहा",
+    "Quick actions": "झटपट कामे",
+    "Add cattle": "जनावर जोडा",
+    "Add record": "नोंद जोडा",
+    "Reports": "अहवाल",
+    "Download as Excel": "Excel मध्ये डाउनलोड करा",
+    "About this animal": "या जनावराविषयी",
+    "Overview": "सारांश",
+    "No photo": "फोटो नाही",
+    "The latest 10.": "नवीनतम 10.",
+    "About the farm": "गोठ्याविषयी",
+    "Fresh from our desi cows. You pay when your order is delivered.": "आमच्या देशी गायींकडून ताजे. ऑर्डर घरी पोहोचल्यावर पैसे द्या.",
+    "Questions about an order, a visit to the farm or a regular delivery? Get in touch.": "ऑर्डर, गोठ्याला भेट किंवा नियमित डिलिव्हरीबद्दल प्रश्न आहेत? आमच्याशी संपर्क साधा.",
 }
 
 MONTHS_MR = ["जाने", "फेब्रु", "मार्च", "एप्रि", "मे", "जून", "जुलै", "ऑग", "सप्टें", "ऑक्टो", "नोव्हें", "डिसें"]
@@ -595,6 +740,18 @@ def translate(text, lang, **kw):
     if lang == "mr":
         text = MR.get(text, text)
     return text.format(**kw) if kw else text
+
+
+# Marathi says the part of the day instead of AM / PM: पहाटे 4:07, सकाळी 10:48, दुपारी 2:15, सायंकाळी 6:30, रात्री 11:00
+DAY_PARTS_MR = [(3, "रात्री"), (6, "पहाटे"), (12, "सकाळी"), (16, "दुपारी"), (20, "सायंकाळी"), (24, "रात्री")]
+
+
+def clock_text(t, lang):
+    """A time of day on the 12-hour clock: 6:05 AM, 12:30 PM, 12:15 AM; in Marathi सकाळी 6:05, दुपारी 12:30, रात्री 12:15."""
+    hm = f"{t.hour % 12 or 12}:{t.minute:02d}"
+    if lang == "mr":
+        return f"{next(word for end, word in DAY_PARTS_MR if t.hour < end)} {hm}"
+    return f"{hm} {'AM' if t.hour < 12 else 'PM'}"
 
 
 def date_text(d, fmt, lang):
