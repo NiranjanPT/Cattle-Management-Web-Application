@@ -12,10 +12,11 @@ from conftest import ROOT, TEST_URL, alembic, reset_db
 
 # every table the migrations create, besides alembic_version
 TABLES = {"users", "cattle", "products", "orders", "order_items", "health_records", "vaccinations", "feedings",
-          "breedings", "milk_records", "tasks", "task_animals", "text_translations"}
+          "breedings", "milk_records", "tasks", "task_animals", "text_translations", "settings"}
 
 
-MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py", "0003_text_translations.py", "0004_user_city_pincode.py"]  # in order
+MIGRATIONS = ["0001_initial_schema.py", "0002_tasks.py", "0003_text_translations.py", "0004_user_city_pincode.py",
+              "0005_order_expected_delivery.py", "0006_home_delivery.py"]  # in order
 
 
 def _migration_module(name="0001_initial_schema.py"):

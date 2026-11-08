@@ -18,6 +18,7 @@
     <p class="eyebrow">{{ _(COMPANY) }}</p>
     <h1 id="hero-title">{{ _(TAGLINE) }}</h1>
     <p class="lead">{{ _('Pure A2 milk, ghee and dairy products from desi cows that we raise with care, the traditional way.') }}</p>
+    {% include "_delivery_note.html" %}
     <div class="row hero-buttons">
       <a class="btn lg" href="{{ url_for('shop') if user else url_for('login', next=url_for('shop')) }}">{{ _('Order fresh dairy') }}</a>
       <a class="btn ghost lg" href="{{ url_for('site_products') }}">{{ _('See our products') }}</a>

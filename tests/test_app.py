@@ -348,7 +348,7 @@ def test_order_then_cancel_returns_stock(fresh_db, farm):
     assert stock(fresh_db, pid) == before
     staff.post(f"/admin/orders/{oid}/status", {"status": "Cancelled"})  # again: no double return
     assert stock(fresh_db, pid) == before
-    staff.post(f"/admin/orders/{oid}/status", {"status": "Confirmed"})  # un-cancel takes it again
+    staff.post(f"/admin/orders/{oid}/status", {"status": "Confirmed", "expected_delivery": str(T)})  # un-cancel takes it again
     assert stock(fresh_db, pid) == before - 3
     staff.post(f"/admin/orders/{oid}/status", {"status": "Cancelled"})
     assert stock(fresh_db, pid) == before

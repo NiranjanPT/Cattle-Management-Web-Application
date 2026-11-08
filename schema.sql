@@ -185,3 +185,13 @@ ALTER TABLE users ADD COLUMN city TEXT;
 ALTER TABLE users ADD COLUMN pincode TEXT CHECK (pincode ~ '^[1-9][0-9]{5}$');
 CREATE INDEX idx_users_city ON users (lower(city));
 CREATE INDEX idx_users_pincode ON users (pincode);
+
+-- Migration 0005: the expected delivery date given when an order is confirmed
+ALTER TABLE orders ADD COLUMN expected_delivery DATE;
+
+-- Migration 0006: home delivery. settings holds single choices the owner makes
+ALTER TABLE orders ADD COLUMN delivery_unavailable INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);

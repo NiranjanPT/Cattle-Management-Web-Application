@@ -3,10 +3,12 @@
 {% block site_content %}
 <section class="block" aria-labelledby="order-title"><div class="wrap">
   <h1 id="order-title" class="page-title">{{ _('How to order') }}</h1>
+  {% include "_delivery_note.html" %}
   <ol class="steps">
     <li><b>{{ _('Create an account') }}</b><span>{{ _('Sign up with your name, phone and delivery address.') }}</span></li>
     <li><b>{{ _('Choose products') }}</b><span>{{ _('Add milk, ghee, curd and more to your cart.') }}</span></li>
-    <li><b>{{ _('Pay on delivery') }}</b><span>{{ _('We confirm your order and deliver it to your door.') }}</span></li>
+    {% if home_delivery %}<li><b>{{ _('Pay on delivery') }}</b><span>{{ _('We confirm your order and deliver it to your door.') }}</span></li>
+    {% else %}<li><b>{{ _('We confirm your order') }}</b><span>{{ _('No home delivery available for now.') }}</span></li>{% endif %}
   </ol>
   <div class="row">
     {% if user %}<a class="btn lg" href="{{ url_for('shop') }}">{{ _('Go to the shop') }}</a>

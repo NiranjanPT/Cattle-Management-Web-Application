@@ -1,0 +1,9 @@
+{# Delivery in an order's status form (the form is order-N, so these can sit in their own table column). Needs `o`.
+   app.js shows this when the status chosen is Confirmed, and asks for the date unless "Delivery unavailable" is ticked;
+   the server checks it either way. While the owner's home delivery is off, an order not yet confirmed starts ticked.
+   A date already saved stays valid once it has passed. #}
+<div class="delivery-date" id="delivery-{{ o.id }}">
+  <label class="check"><input form="order-{{ o.id }}" type="checkbox" name="delivery_unavailable" value="1" {{ 'checked' if o.delivery_unavailable or (o.status != 'Confirmed' and not home_delivery and not o.expected_delivery) }}> {{ _('Delivery unavailable') }}</label>
+  <label class="delivery-when"><span class="when-text">{{ _('Expected delivery') }}</span>
+    <input form="order-{{ o.id }}" type="date" name="expected_delivery" value="{{ o.expected_delivery or '' }}" min="{{ o.expected_delivery if o.expected_delivery and o.expected_delivery < today else today }}"></label>
+</div>

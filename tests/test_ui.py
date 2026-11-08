@@ -167,7 +167,7 @@ def test_customer_orders_has_its_own_menu_item_with_a_green_count(fresh_db, plac
     shop_menu = re.search(r"Shop <span aria-hidden.*?</details>", page, re.S).group(0)
     assert "/admin/orders" not in shop_menu and "/shop" in shop_menu  # no longer under Shop
     assert badge(text(staff.get("/cattle"))) == before + 1  # on every page
-    staff.post(f"/admin/orders/{oid}/status", {"status": "Confirmed"})
+    staff.post(f"/admin/orders/{oid}/status", {"status": "Confirmed", "expected_delivery": str(date.today())})
     after = text(staff.get(f"/orders/{oid}"))
     assert badge(after) == before  # dealt with
     assert re.search(r'<a href="/admin/orders" class="on" aria-current="page">Customer orders', after)

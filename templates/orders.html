@@ -2,6 +2,16 @@
 {% block content %}
 <h1>{{ _('Customer orders') if manage else _('My orders') }}</h1>
 {% if manage %}
+<div class="row spread card delivery-switch no-print">
+  {% include "_delivery_note.html" %}
+  {% if user.role == 'admin' %}<form method="post" action="{{ url_for('set_home_delivery') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="value" value="{{ 'off' if home_delivery else 'on' }}">
+    <button class="{{ 'ghost' if home_delivery }}">{{ _('Stop home delivery') if home_delivery else _('Start accepting home delivery') }}</button></form>{% endif %}
+</div>
+{% else %}
+{% include "_delivery_note.html" %}
+{% endif %}
+{% if manage %}
 <nav class="tabs no-print" aria-label="{{ _('Status') }}"><a href="{{ url_for('manage_orders', q=s or None, city=city or None, pincode=pin or None) }}" class="{{ 'on' if not status }}"{% if not status %} aria-current="page"{% endif %}>{{ _('All') }}</a>
 {% for st in statuses %}<a href="{{ url_for('manage_orders', status=st, q=s or None, city=city or None, pincode=pin or None) }}" class="{{ 'on' if status == st }}"{% if status == st %} aria-current="page"{% endif %}>{{ _(st) }}</a>{% endfor %}</nav>
 <form class="row card filters no-print" method="get" role="search">
@@ -12,16 +22,18 @@
   {% if s or city or pin %}<a class="btn ghost" href="{{ url_for('manage_orders', status=status or None) }}">{{ _('Clear') }}</a>{% endif %}
 </form>
 {% endif %}
-<div class="card table-wrap scroll" tabindex="0" role="region" aria-label="{{ _('Orders') }}"><table>
-<thead><tr><th>{{ _('Order') }}</th><th>{{ _('Date') }}</th>{% if manage %}<th>{{ _('Customer') }}</th><th>{{ _('City') }}</th>{% endif %}<th class="n">{{ _('Total') }}</th><th>{{ _('Status') }}</th>{% if manage %}<th>{{ _('Change status') }}</th>{% endif %}</tr></thead>
+<div class="card table-wrap scroll" tabindex="0" role="region" aria-label="{{ _('Orders') }}"><table class="{{ 'orders-table' if manage }}">
+<thead><tr><th>{{ _('Order') }}</th><th>{{ _('Date') }}</th>{% if manage %}<th>{{ _('Customer') }}</th><th>{{ _('City') }}</th>{% endif %}<th class="n">{{ _('Total') }}</th><th>{{ _('Status') }}</th><th>{{ _('Expected delivery') }}</th>{% if manage %}<th><span class="sr-only">{{ _('Actions') }}</span></th>{% endif %}</tr></thead>
 <tbody>
 {% for o in rows %}<tr><td><a href="{{ url_for('order_detail', oid=o.id) }}">#{{ o.id }}</a></td><td>{{ o.created_at|dt }}</td>
 {% if manage %}<td>{{ o.full_name|dv }}</td><td>{{ o.city|dv if o.city }}{% if o.pincode %} <span class="muted small">{{ o.pincode }}</span>{% endif %}</td>{% endif %}<td class="n">{{ o.total|money }}</td>
-<td><span class="badge {{ 'ok' if o.status == 'Delivered' else 'bad' if o.status == 'Cancelled' else 'warn' if o.status == 'Pending' else '' }}">{{ _(o.status) }}</span></td>
-{% if manage %}<td><form method="post" action="{{ url_for('order_status', oid=o.id) }}" class="row">
-<input type="hidden" name="csrf" value="{{ csrf_token }}">
-<select name="status" aria-label="{{ _('Status of order #{n}', n=o.id) }}">{% for st in statuses %}<option value="{{ st }}" {{ 'selected' if o.status == st }}>{{ _(st) }}</option>{% endfor %}</select><button class="sm">{{ _('Save') }}</button></form></td>{% endif %}
-</tr>{% else %}<tr><td colspan="7" class="muted">{{ _('No orders found.') if manage and (s or city or pin or status) else _('No orders yet.') }}</td></tr>{% endfor %}
+{# staff: one form per row, whose fields sit in their own columns (form="order-N"); Save shows once the row is changed #}
+{% if manage %}<td><select form="order-{{ o.id }}" name="status" aria-label="{{ _('Status of order #{n}', n=o.id) }}" data-delivery="delivery-{{ o.id }}" data-status="{{ o.status }}">{% for st in statuses %}<option value="{{ st }}" {{ 'selected' if o.status == st }}>{{ _(st) }}</option>{% endfor %}</select></td>
+<td>{% include "_order_date.html" %}<span class="delivery-none muted" aria-hidden="true">—</span></td>
+<td class="n"><form id="order-{{ o.id }}" method="post" action="{{ url_for('order_status', oid=o.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="sm row-save" aria-label="{{ _('Save') }} #{{ o.id }}">{{ _('Save') }}</button></form></td>
+{% else %}<td><span class="badge {{ 'ok' if o.status == 'Delivered' else 'bad' if o.status == 'Cancelled' else 'warn' if o.status == 'Pending' else '' }}">{{ _(o.status) }}</span></td>
+<td class="nw">{% if o.status == 'Confirmed' and o.delivery_unavailable %}{{ _('Delivery unavailable') }}{% elif o.status == 'Confirmed' and o.expected_delivery %}{{ o.expected_delivery|fdate('%a %d %b %Y') }}{% else %}—{% endif %}</td>{% endif %}
+</tr>{% else %}<tr><td colspan="8" class="muted">{{ _('No orders found.') if manage and (s or city or pin or status) else _('No orders yet.') }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% include "_pager.html" %}
 {% endblock %}

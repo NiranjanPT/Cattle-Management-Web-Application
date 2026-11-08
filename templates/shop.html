@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block title %}{{ _('Shop') }}{% endblock %}
 {% block content %}
 <div class="row spread"><h1>{{ _('Farm-fresh dairy shop') }}</h1><a class="btn ghost" href="{{ url_for('cart') }}">🛒 {{ _('Cart') }} ({{ cart_count }})</a></div>
+{% include "_delivery_note.html" %}
 <div class="tabs">
   <a href="{{ url_for('shop') }}" class="{{ 'on' if not cat }}">{{ _('All') }}</a>
   {% for c in cats %}<a href="{{ url_for('shop', category=c) }}" class="{{ 'on' if cat == c }}">{{ _(c) }}</a>{% endfor %}

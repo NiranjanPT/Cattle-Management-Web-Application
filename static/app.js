@@ -31,6 +31,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (history.length > 1 && document.referrer.startsWith(location.origin)) { e.preventDefault(); history.back(); }
   }));
 
+  // ---- an order's status: Confirmed needs an expected delivery date, unless delivery is unavailable
+  document.querySelectorAll('select[data-delivery]').forEach(status => {
+    const box = document.getElementById(status.dataset.delivery);
+    const date = box.querySelector('input[type=date]');
+    const none = box.querySelector('input[type=checkbox]');
+    const save = status.form.querySelector('.row-save');  // in the list: shown once the row has been changed
+    const now = () => [status.value, date.value, none.checked].join();
+    const saved = now();
+    const sync = () => {
+      const confirmed = status.value === 'Confirmed';
+      box.hidden = !confirmed;
+      date.closest('label').hidden = none.checked;
+      date.required = confirmed && !none.checked;
+      if (status.dataset.status) status.dataset.status = status.value;  // its colour
+      if (save) save.classList.toggle('idle', now() === saved);
+    };
+    status.addEventListener('change', sync);
+    none.addEventListener('change', sync);
+    date.addEventListener('input', sync);
+    sync();
+  });
+
   // ---- messages: put in again after loading, so screen readers announce them
   document.querySelectorAll('.flashes').forEach(box => {
     const html = box.innerHTML.trim();

@@ -1,0 +1,2 @@
+{# Whether the farm is taking home deliveries: the owner switches this on Customer orders. #}
+<p class="delivery-note {{ 'on' if home_delivery else 'off' }}"><span aria-hidden="true">🚚</span> {{ _('We are accepting home delivery.') if home_delivery else _('No home delivery available for now.') }}</p>

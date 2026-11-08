@@ -237,6 +237,15 @@ def set_lang(code):
     return resp
 
 
+def home_delivery():
+    """Whether the farm is taking home deliveries; the owner switches it on Customer orders. Off until then."""
+    try:
+        row = q("SELECT value FROM settings WHERE key='home_delivery'", one=True)
+    except psycopg.errors.UndefinedTable:  # before `alembic upgrade head`
+        return False
+    return bool(row) and row["value"] == "on"
+
+
 @app.context_processor
 def inject():
     cart = session.get("cart", {})
@@ -248,6 +257,7 @@ def inject():
                       (date.today(),), one=True)["n"]
         new_orders = q("SELECT COUNT(*) AS n FROM orders WHERE status='Pending'", one=True)["n"]
     return {"user": user, "csrf_token": session.get("csrf", ""), "tasks_due": tasks_due, "new_orders": new_orders,
+            "home_delivery": home_delivery(),
             "cart_count": sum(cart.values()) if cart else 0, "today": date.today(), "lang": lang()}
 
 
@@ -1440,9 +1450,20 @@ def order_status(oid):
     new = request.form["status"]
     if new not in ORDER_STATUSES:
         abort(400)
+    unavailable = bool(request.form.get("delivery_unavailable"))
+    expected = None if unavailable else parse_date(request.form.get("expected_delivery"))
     with get_db().transaction():
         # the row lock stops two clicks on "Cancelled" from returning the stock twice
         o = q("SELECT * FROM orders WHERE id=%s FOR UPDATE", (oid,), one=True) or abort(404)
+        if new == "Confirmed" and not unavailable:  # confirming promises a date, which the customer then sees
+            problem = None
+            if expected is None:
+                problem = tr("Please enter the expected delivery date to confirm this order.")
+            elif expected < datetime.now(ZoneInfo(TIMEZONE)).date() and expected != o["expected_delivery"]:
+                problem = tr("The expected delivery date cannot be in the past.")  # a date already saved may have passed
+            if problem:
+                flash(problem, "error")
+                return redirect(request.referrer or url_for("manage_orders"))
         # return stock when an order is cancelled, take it again if un-cancelled
         if new == "Cancelled" and o["status"] != "Cancelled":
             ex("UPDATE products SET stock=stock+(SELECT qty FROM order_items i WHERE i.order_id=%s AND"
@@ -1452,9 +1473,30 @@ def order_status(oid):
             ex("UPDATE products SET stock=stock-(SELECT qty FROM order_items i WHERE i.order_id=%s AND"
                " i.product_id=products.id) WHERE id IN (SELECT product_id FROM order_items WHERE order_id=%s)",
                (oid, oid))
-        ex("UPDATE orders SET status=%s WHERE id=%s", (new, oid))
-    flash(tr("Order #{id} marked {status}.", id=oid, status=tr(new)), "ok")
+        if new == "Confirmed":
+            ex("UPDATE orders SET status=%s, expected_delivery=%s, delivery_unavailable=%s WHERE id=%s",
+               (new, expected, 1 if unavailable else 0, oid))
+        else:  # what was promised stays on record
+            ex("UPDATE orders SET status=%s WHERE id=%s", (new, oid))
+    if new == "Confirmed" and unavailable:
+        flash(tr("Order #{id} confirmed: delivery unavailable.", id=oid), "ok")
+    elif new == "Confirmed":
+        flash(tr("Order #{id} confirmed: expected delivery {date}.", id=oid, date=fdate(expected)), "ok")
+    else:
+        flash(tr("Order #{id} marked {status}.", id=oid, status=tr(new)), "ok")
     return redirect(request.referrer or url_for("manage_orders"))
+
+
+@app.route("/admin/home-delivery", methods=["POST"])
+@login_required("admin")
+def set_home_delivery():
+    """The owner's switch: customers see whether the farm is taking home deliveries."""
+    on = request.form.get("value") == "on"
+    get_db().execute("INSERT INTO settings (key, value) VALUES ('home_delivery', %s)"
+                     " ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", ("on" if on else "off",))
+    flash(tr("Customers now see that you are accepting home delivery.") if on
+          else tr("Customers now see that there is no home delivery for now."), "ok")
+    return redirect(url_for("manage_orders"))
 
 
 @app.route("/admin/products")

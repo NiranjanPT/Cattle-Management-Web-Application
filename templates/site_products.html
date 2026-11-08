@@ -3,7 +3,8 @@
 {% block site_content %}
 <section class="block" aria-labelledby="products-title"><div class="wrap">
   <h1 id="products-title" class="page-title">{{ _('Our products') }}</h1>
-  <p class="lead">{{ _('Fresh from our desi cows. You pay when your order is delivered.') }}</p>
+  <p class="lead">{{ _('Fresh from our desi cows. You pay when your order is delivered.') if home_delivery else _('Fresh from our desi cows.') }}</p>
+  {% include "_delivery_note.html" %}
   {% if products %}
   <div class="products">
   {% for p in products %}
