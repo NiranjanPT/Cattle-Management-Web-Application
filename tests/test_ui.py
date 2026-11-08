@@ -152,6 +152,29 @@ def test_menu_shows_only_what_each_role_can_use(fresh_db, place):
     assert 'id="menu"' in page
 
 
+def test_customer_orders_has_its_own_menu_item_with_a_green_count(fresh_db, place):
+    def badge(page):
+        m = re.search(r'href="/admin/orders"[^>]*>Customer orders <span class="badge new"[^>]*>'
+                      r'<span aria-hidden="true">(\d+)</span>', page)
+        return int(m.group(1)) if m else 0
+
+    a, staff = fresh_db, login(fresh_db, "staff", "staff123")
+    before = badge(text(staff.get("/dashboard")))
+    with a.app.app_context():
+        oid = a.ex("INSERT INTO orders (user_id, total) VALUES (%s, 250)", (place["customer"],))
+    page = text(staff.get("/dashboard"))
+    assert badge(page) == before + 1  # each new order adds one
+    shop_menu = re.search(r"Shop <span aria-hidden.*?</details>", page, re.S).group(0)
+    assert "/admin/orders" not in shop_menu and "/shop" in shop_menu  # no longer under Shop
+    assert badge(text(staff.get("/cattle"))) == before + 1  # on every page
+    staff.post(f"/admin/orders/{oid}/status", {"status": "Confirmed"})
+    after = text(staff.get(f"/orders/{oid}"))
+    assert badge(after) == before  # dealt with
+    assert re.search(r'<a href="/admin/orders" class="on" aria-current="page">Customer orders', after)
+    customer = text(login(a, "customer", "customer123").get("/shop"))  # customers don't see the count
+    assert "badge new" not in customer and "/admin/orders" not in customer
+
+
 def test_dashboard_quick_actions(fresh_db, place):
     page = text(login(fresh_db, "staff", "staff123").get("/dashboard"))
     quick = re.search(r'<div class="quick.*?</div>\s*</details>\s*</div>', page, re.S).group(0)

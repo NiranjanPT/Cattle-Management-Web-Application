@@ -241,11 +241,13 @@ def set_lang(code):
 def inject():
     cart = session.get("cart", {})
     user = current_user()
-    tasks_due = 0  # open tasks due today or overdue, shown next to "Tasks" in the menu
+    # for the menu: open tasks due today or overdue, and orders nobody has dealt with yet (a green count)
+    tasks_due = new_orders = 0
     if user and user["role"] in FARM:
         tasks_due = q("SELECT COUNT(*) AS n FROM tasks WHERE status='Open' AND due_date<=%s",
                       (date.today(),), one=True)["n"]
-    return {"user": user, "csrf_token": session.get("csrf", ""), "tasks_due": tasks_due,
+        new_orders = q("SELECT COUNT(*) AS n FROM orders WHERE status='Pending'", one=True)["n"]
+    return {"user": user, "csrf_token": session.get("csrf", ""), "tasks_due": tasks_due, "new_orders": new_orders,
             "cart_count": sum(cart.values()) if cart else 0, "today": date.today(), "lang": lang()}
 
 

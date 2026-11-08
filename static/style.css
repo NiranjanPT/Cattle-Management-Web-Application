@@ -175,6 +175,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .badge.ok { background: var(--accent-soft); border-color: transparent; color: var(--accent-dark); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .badge.bad { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.badge.new { background: var(--good); color: #ffffff; border-color: transparent; font-weight: 600; }
 .muted { color: var(--muted); }
 .small { font-size: 16px; }
 .auth { max-width: 440px; margin: 32px auto; }

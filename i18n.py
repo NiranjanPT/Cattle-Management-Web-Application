@@ -90,6 +90,7 @@ MR = {
     "Storefront": "ग्राहक दुकान",
     "Products and stock": "उत्पादने आणि साठा",
     "Customer orders": "ग्राहकांच्या ऑर्डर",
+    "New orders: {n}": "नवीन ऑर्डर: {n}",
     "Tasks": "कामे",
     "due today or overdue": "आज देय किंवा थकीत",
     "Calendar": "पंचांग",

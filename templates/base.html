@@ -27,7 +27,7 @@
   <nav class="main" aria-label="{{ _('Main menu') }}">
   {% if user and user.role in ('admin', 'staff') %}
     {% set rec_on = ep in ('records', 'record_form') or (ep == 'import_page' and (page_kind or 'cattle') != 'cattle') %}
-    {% set shop_on = ep in ('shop', 'cart', 'products', 'product_form', 'manage_orders', 'order_detail') %}
+    {% set shop_on = ep in ('shop', 'cart', 'products', 'product_form') %}
     {{ navlink(url_for('dashboard'), _('Dashboard'), ep == 'dashboard') }}
     {{ navlink(url_for('cattle_list'), _('Cattle'), ep.startswith('cattle') or (ep == 'import_page' and not rec_on)) }}
     <details class="menu"><summary class="{{ 'on' if rec_on }}">{{ _('Records') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
@@ -37,8 +37,10 @@
     <details class="menu"><summary class="{{ 'on' if shop_on }}">{{ _('Shop') }} <span aria-hidden="true">▾</span></summary><div class="menu-items">
       {{ navlink(url_for('shop'), _('Storefront'), ep in ('shop', 'cart')) }}
       {{ navlink(url_for('products'), _('Products and stock'), ep in ('products', 'product_form')) }}
-      {{ navlink(url_for('manage_orders'), _('Customer orders'), ep in ('manage_orders', 'order_detail')) }}
     </div></details>
+    {# green count: orders customers have placed that nobody has dealt with yet (status Pending) #}
+    {% set new_badge %}{% if new_orders %} <span class="badge new" title="{{ _('New orders: {n}', n=new_orders) }}"><span aria-hidden="true">{{ new_orders }}</span><span class="sr-only">{{ _('New orders: {n}', n=new_orders) }}</span></span>{% endif %}{% endset %}
+    {{ navlink(url_for('manage_orders'), _('Customer orders'), ep in ('manage_orders', 'order_detail'), new_badge) }}
     {% set due %}{% if tasks_due %} <span class="badge bad" title="{{ _('due today or overdue') }}">{{ tasks_due }}</span>{% endif %}{% endset %}
     {{ navlink(url_for('tasks'), _('Tasks'), ep.startswith('task'), due) }}
     {{ navlink(url_for('calendar'), _('Calendar'), ep in ('calendar', 'nakshatras')) }}
